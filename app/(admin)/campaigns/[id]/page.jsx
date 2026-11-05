@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Flash from "@/components/Flash";
 import { StatusPill } from "@/components/Chips";
+import AutoRefresh from "@/components/AutoRefresh";
 import { deleteCampaignAction, runCampaignAction, toggleCampaignAction } from "../../actions";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
 import { getCampaign, listRuns } from "@/lib/store";
@@ -26,6 +27,7 @@ export default async function CampaignPage({ params, searchParams }) {
 
   return (
     <div className="reveal">
+      <AutoRefresh active={runs.some((r) => r.status === "running")} />
       <p><Link href="/" className="inline-flex min-h-[44px] items-center text-muted underline underline-offset-4 hover:text-brand-hover">Back to overview</Link></p>
       <p className="eyebrow mt-2">Campaign</p>
       <h1 className="mt-1 text-4xl font-semibold">{c.name}</h1>
@@ -100,7 +102,7 @@ export default async function CampaignPage({ params, searchParams }) {
                   <tr key={r.id} className="border-b border-line align-top last:border-b-0">
                     <td className="p-3">{fmt(r.started_at)}</td>
                     <td className="p-3">{r.trigger === "schedule" ? "Scheduled" : "Manual"}</td>
-                    <td className="p-3"><StatusPill status={r.status} />{r.error ? <p className="mt-1 text-sm text-muted">{r.error}</p> : null}</td>
+                    <td className="p-3"><StatusPill status={r.status} />{r.status === "running" ? <span className="ml-2 text-sm text-muted">{r.searches} of {r.total_searches} searches, {r.found} found so far</span> : null}{r.error ? <p className="mt-1 text-sm text-muted">{r.error}</p> : null}</td>
                     <td className="p-3">{r.found}</td>
                     <td className="p-3">{r.created}</td>
                     <td className="p-3">{r.no_website}</td>

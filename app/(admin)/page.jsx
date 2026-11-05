@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import Link from "next/link";
 import Flash from "@/components/Flash";
 import { StatusPill } from "@/components/Chips";
+import AutoRefresh from "@/components/AutoRefresh";
 import { draftAllAction } from "./actions";
 import { DEFAULT_BRAND_ID, getBrand, brandReadiness } from "@/config/brands";
 import { listCampaigns, listRuns, stats } from "@/lib/store";
@@ -38,6 +39,7 @@ export default async function Overview({ searchParams }) {
 
   return (
     <div className="reveal">
+      <AutoRefresh active={runs.some((r) => r.status === "running")} />
       <p className="eyebrow">Overview</p>
       <h1 className="mt-1 text-4xl font-semibold">Lead pipeline</h1>
       <p className="mt-2 max-w-2xl text-lg text-muted">
@@ -129,7 +131,7 @@ export default async function Overview({ searchParams }) {
                     <td className="p-3">{fmt(r.started_at)}</td>
                     <td className="p-3">{r.campaign_name}</td>
                     <td className="p-3">{r.trigger === "schedule" ? "Scheduled" : "Manual"}</td>
-                    <td className="p-3"><StatusPill status={r.status} />{r.error ? <p className="mt-1 text-sm text-muted">{r.error}</p> : null}</td>
+                    <td className="p-3"><StatusPill status={r.status} />{r.status === "running" ? <span className="ml-2 text-sm text-muted">{r.searches} of {r.total_searches} searches, {r.found} found so far</span> : null}{r.error ? <p className="mt-1 text-sm text-muted">{r.error}</p> : null}</td>
                     <td className="p-3">{r.created} of {r.found} found</td>
                   </tr>
                 ))}

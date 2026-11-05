@@ -57,6 +57,14 @@ Brand data lives in `config/brands.js` and is passed as a `brand` object to the 
 
 Mockup and opt-out links must be publicly reachable, so the app has to be hosted before real email goes out. Note that the in-memory rate limiter and send lock are per serverless instance.
 
+## Where your data lives
+
+The local database, generated secret and mail outbox are kept in %LOCALAPPDATA%\Kestrel (override with `KESTREL_DATA_DIR`), not in the project folder, because this project sits under OneDrive and cloud sync can damage a database's many small files. On the first start of a version that does this, existing data from the old `data\pglite` folder is copied over automatically and the old copy is left as a backup.
+
+Stop the app with Ctrl+C (or close the terminal) as usual. If it is ever stopped abruptly, the next start clears the leftover lock and keeps your data, and any scan that was cut off is marked "Interrupted". Only one copy of the app can use the local database at a time.
+
+Scans use the free OpenStreetMap servers, which are sometimes slow or busy (one search can take a minute or more). A running scan shows live progress (searches done, leads found), stops after 25 minutes, and gives up early if three searches in a row fail. Results found so far are always saved.
+
 ## Scheduled scans (Windows Task Scheduler)
 
 Campaigns are picked with buttons only (state, cities, business types, schedule). Open a campaign and the page shows the exact one-line command to register it, for example:

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 process.env.PGLITE_DIR = "memory";
+process.env.KESTREL_DATA_DIR = (await import("node:fs")).mkdtempSync((await import("node:path")).join((await import("node:os")).tmpdir(), "kestrel-test-"));
 delete process.env.DATABASE_URL;
 process.env.APP_SECRET = "test-secret-test-secret-123";
 process.env.APP_BASE_URL = "https://concepts.example.test";
@@ -390,4 +391,105 @@ test("a damaged local database folder is moved aside and replaced, not deleted",
   assert.equal((await db.query("SELECT COUNT(*)::int AS n FROM leads")).rows[0].n, 0);
   assert.ok(fs.readdirSync(root).some((n) => n.startsWith("pglite.broken-")), "old folder kept");
   await db.close();
+});
+
+test("a scan reports progress, gives up when servers keep failing, and respects its time limit", async () => {
+  const seen = [];
+  const ok = async () => [];
+  const a = await runDiscovery({ brandId: "aquila", locations: ["A B, PA", "C D, PA"], categories: ["plumber", "barber"], search: ok, apiKey: "k", onProgress: (p) => seen.push(p.attempted) });
+  assert.equal(a.attempted, 4);
+  assert.deepEqual(seen, [0, 1, 2, 3, 4]);
+  assert.equal(a.stopped, null);
+  const fail = async () => { throw new Error("busy"); };
+  const b = await runDiscovery({ brandId: "aquila", locations: ["A B, PA", "C D, PA"], categories: ["plumber", "barber", "dentist"], search: fail, apiKey: "k" });
+  assert.equal(b.attempted, 3, "stops after 3 failures in a row instead of grinding through all 6");
+  assert.match(b.stopped, /in a row failed/);
+  const c = await runDiscovery({ brandId: "aquila", locations: ["A B, PA"], categories: ["plumber"], search: ok, apiKey: "k", deadlineMs: -1 });
+  assert.equal(c.attempted, 0);
+  assert.match(c.stopped, /minute limit/);
+});
+
+test("local files live outside the project folder (OneDrive safe)", async () => {
+  const { appDataDir } = await import("../lib/appdir.js");
+  const dir = appDataDir();
+  const path = await import("node:path");
+  assert.ok(!path.resolve(dir).startsWith(path.resolve(process.cwd())), dir);
+  assert.equal(appDataDir.length, 0);
+});
+
+test("an unclean stop (stale lock) does not lose the database", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { openLocal } = await import("../lib/db.js");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kestrel-stale-"));
+  const live = path.join(root, "live", "pglite");
+  const a = await openLocal(live);
+  await a.exec("INSERT INTO suppressions (brand_id, email, reason, created_at) VALUES ('aquila','keep@x.test','t','now')");
+  // Simulate a hard kill: copy the folder while it is open, so it still contains postmaster.pid.
+  const crashed = path.join(root, "crashed", "pglite");
+  fs.mkdirSync(path.dirname(crashed), { recursive: true });
+  fs.cpSync(live, crashed, { recursive: true });
+  assert.ok(fs.existsSync(path.join(crashed, "postmaster.pid")), "the stale lock is present");
+  await a.close();
+  const b = await openLocal(crashed);
+  assert.equal((await b.query("SELECT email FROM suppressions")).rows[0].email, "keep@x.test", "data survived");
+  assert.ok(!fs.readdirSync(path.dirname(crashed)).some((n) => n.includes(".broken-")), "nothing was moved aside");
+  await b.close();
+});
+
+test("a second live copy of the app is refused instead of corrupting the database", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { openLocal } = await import("../lib/db.js");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kestrel-lock-"));
+  const dir = path.join(root, "pglite");
+  fs.writeFileSync(dir + ".lock", String(process.ppid)); // a live process that is not us
+  await assert.rejects(openLocal(dir), /Another copy of Kestrel/);
+  fs.writeFileSync(dir + ".lock", "999999999"); // a dead process: stale, so it is taken over
+  const db = await openLocal(dir);
+  assert.equal((await db.query("SELECT 1 AS x")).rows[0].x, 1);
+  await db.close();
+});
+
+test("data from the old in-project folder is moved to the app data folder", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { migrateLegacyData } = await import("../lib/appdir.js");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kestrel-mig-"));
+  const legacy = path.join(root, "old");
+  fs.mkdirSync(path.join(legacy, "pglite"), { recursive: true });
+  fs.writeFileSync(path.join(legacy, "pglite", "PG_VERSION"), "16");
+  fs.writeFileSync(path.join(legacy, "pglite", "postmaster.pid"), "-42");
+  fs.writeFileSync(path.join(legacy, ".secret"), "old-secret");
+  const target = path.join(root, "new");
+  assert.equal(migrateLegacyData({ legacyRoot: legacy, newRoot: target }), true);
+  assert.ok(fs.existsSync(path.join(target, "pglite", "PG_VERSION")));
+  assert.ok(!fs.existsSync(path.join(target, "pglite", "postmaster.pid")), "stale lock dropped");
+  assert.equal(fs.readFileSync(path.join(target, ".secret"), "utf8"), "old-secret");
+  assert.ok(fs.existsSync(path.join(legacy, "pglite", "PG_VERSION")), "original kept as a backup");
+  assert.equal(migrateLegacyData({ legacyRoot: legacy, newRoot: target }), false, "never overwrites");
+});
+
+test("a scan cut off by stopping the app is closed out on the next start", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kestrel-run-"));
+  const { openLocal } = await import("../lib/db.js");
+  const dir = path.join(root, "pglite");
+  const first = await openLocal(dir);
+  await first.exec("INSERT INTO runs (brand_id, campaign_id, campaign_name, started_at) VALUES ('aquila', 1, 'cut off', 'now')");
+  await first.close();
+  const prev = process.env.PGLITE_DIR;
+  process.env.PGLITE_DIR = dir;
+  delete globalThis.__kestrelDb;
+  const { query } = await import("../lib/db.js");
+  const [run] = await query("SELECT status, error FROM runs WHERE campaign_name = 'cut off'");
+  assert.equal(run.status, "interrupted");
+  assert.match(run.error, /stopped/);
+  process.env.PGLITE_DIR = prev;
+  delete globalThis.__kestrelDb;
 });

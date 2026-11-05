@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0
+- Fixed the database being treated as damaged after every unclean stop (stale lock file), which made the app ask to create an account again. Data moves to the app data folder outside OneDrive and existing data is migrated automatically.
+- Scan progress shown live, 25 minute limit, early stop after repeated server failures, cut-off scans marked interrupted.
+
 ## 0.4.0
 - Campaigns picked with buttons only, scheduled through Windows Task Scheduler scripts and a bearer-protected endpoint; run history; retries across Overpass mirrors; verify-before-outreach for OpenStreetMap leads.
 - Aquila Digital branding (colors, fonts, logo) across the app.

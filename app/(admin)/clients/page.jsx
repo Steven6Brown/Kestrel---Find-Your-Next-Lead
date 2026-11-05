@@ -19,6 +19,7 @@ export default async function Clients({ searchParams }) {
       <div className="mt-4"><Flash sp={sp} /></div>
       <div className="mb-4 flex flex-wrap gap-2">
         <Link href="/clients/new" className="btn btn-primary">Add a client</Link>
+        <Link href="/invoices" className="btn">Invoices</Link>
         <a href="/export/clients" className="btn" download>Download clients CSV</a>
         <a href="/export/projects" className="btn" download>Download projects CSV</a>
         <a href="/export/contacts" className="btn" download>Download contacts CSV</a>

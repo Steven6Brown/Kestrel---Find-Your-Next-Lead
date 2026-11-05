@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
+import { requireUser, isManager } from "@/lib/auth";
 import Flash from "@/components/Flash";
 import { BRAND } from "@/lib/auth";
-import { dueTasks, listMeetings, needsFollowUp, stageCounts } from "@/lib/store";
+import { dueTasks, listMeetings, needsFollowUp, outstandingSummary, stageCounts } from "@/lib/store";
 import { CLOSED_STAGES, MEETING_LOCATIONS, QUICK_DUE, nextDaysWindow, STAGES, addDays, dueLabel, labelOf, meetingWhen, stageLabel, todayStr } from "@/lib/crm";
 import { completeTaskAction, snoozeTaskAction } from "../crm-actions";
+import { reconcileAllAction } from "../invoices/actions";
+import { formatCents } from "@/lib/crm";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Today" };
@@ -52,7 +54,7 @@ function Group({ id, title, tasks, today, empty }) {
 }
 
 export default async function Today({ searchParams }) {
-  await requireUser();
+  const user = await requireUser();
   const sp = await searchParams;
   const today = todayStr();
   const win = nextDaysWindow(7);
@@ -60,6 +62,8 @@ export default async function Today({ searchParams }) {
     dueTasks(BRAND, today, 7, addDays), needsFollowUp(BRAND, 15), stageCounts(BRAND),
     listMeetings(BRAND, { ...win, limit: 20 }),
   ]);
+  const money = isManager(user) ? await outstandingSummary(BRAND, today) : null;
+  const paypalReady = !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
   const open = STAGES.filter(([k]) => !CLOSED_STAGES.includes(k));
 
   return (
@@ -78,6 +82,28 @@ export default async function Today({ searchParams }) {
           </li>
         ))}
       </ul>
+
+      {money && (
+        <section aria-labelledby="money-h" className="mt-8">
+          <h2 id="money-h" className="text-2xl font-semibold">Money waiting on you</h2>
+          <div className="card mt-3 flex flex-wrap items-center justify-between gap-4 p-4">
+            <p>
+              <span className="text-3xl font-semibold text-ink">{formatCents(money.outstandingCents)}</span>{" "}
+              <span className="text-muted">across {money.count} invoice(s)</span>
+              {money.overdueCount > 0 && <span className="ml-2 font-semibold text-bad">{formatCents(money.overdueCents)} overdue</span>}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/invoices" className="btn">Invoices</Link>
+              {paypalReady && (
+                <form action={reconcileAllAction}>
+                  <input type="hidden" name="back" value="/today" />
+                  <button type="submit" className="btn btn-primary">Reconcile with PayPal</button>
+                </form>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section aria-labelledby="meet-h" className="mt-8">
         <h2 id="meet-h" className="text-2xl font-semibold">Meetings in the next 7 days <span className="text-base font-normal text-muted">({meetings.length})</span></h2>

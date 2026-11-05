@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.0 (branch crm-core)
+- PayPal invoicing: create draft, send with confirmation, reconcile payments, outstanding money on Today, Invoices page. Tested against a stand-in PayPal.
+
 ## 0.9.0 (branch crm-core)
 - Connections page and connector layer (booking link, PayPal test, Resend status, Google Calendar placeholder). Booking link added to outreach drafts and concept pages.
 

@@ -21,7 +21,12 @@ Unit tests (42 in total) cover stages and the status sync, manual contacts witho
 ## Connections (performed)
 52 unit tests in total. The newest cover booking link validation (including local, numeric and credential-bearing addresses), encrypted secrets and erasure on disconnect, brand isolation, PayPal checks with a stand-in for PayPal (sandbox default, live blocked, 401, network failure, bad reply, no credentials in messages), the connector states, and the booking link appearing in drafts only when saved. In the browser: saved a bad then a good link, ran the PayPal test with no credentials, and confirmed the link appears on a public concept page and on a contact page.
 
+## PayPal invoicing (performed against a stand-in, not real PayPal)
+56 unit tests in total. A fake PayPal that behaves like the documented API (sign-in, idempotent create, send, status, expiry, server errors, network failure) is used to test the client (request shapes, headers, amounts as dollar strings, token reuse and refresh, safe errors, unexpected replies rejected), the invoice rules (no overbilling, deposits, balances, status groups, overdue), and the whole flow: draft, send, payment, reconcile, outstanding totals, retries, and brand isolation. In the browser the real screens were run against a local fake PayPal: connection test, create deposit draft (amount computed on the server), refusal to send without the confirmation tick, send, mark paid, Reconcile on Today, timeline entries, Invoices page.
+
 ## Not performed
+- Any call to the real PayPal sandbox. The request bodies follow PayPal's documented examples and omit optional fields; PayPal may ask for more (for example invoicer details) when it sees a real request.
+- Webhooks, cancelling or refunding invoices, live mode, invoice screens at phone width, keyboard and screen reader checks.
 - A real PayPal sandbox call (no credentials yet) and a real Resend send.
 - Clients, projects and meetings screens at phone width; keyboard-only and screen reader checks.
 - Daylight saving boundaries for meeting times (the conversion helper is tested only for local-time reading).

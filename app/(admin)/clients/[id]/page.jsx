@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireUser, BRAND } from "@/lib/auth";
+import { requireUser, BRAND, isManager } from "@/lib/auth";
+import InvoicePanel from "@/components/InvoicePanel";
 import Flash from "@/components/Flash";
 import { ChipRadio } from "@/components/Chips";
 import MeetingForm from "@/components/MeetingForm";
-import { getClient, listMeetings, listProjects } from "@/lib/store";
+import { getClient, listInvoices, listMeetings, listProjects } from "@/lib/store";
 import {
-  CLIENT_STATUSES, MEETING_LOCATIONS, PROJECT_STATUSES, PROJECT_TYPES, formatCents, labelOf, meetingWhen,
+  CLIENT_STATUSES, MEETING_LOCATIONS, PROJECT_STATUSES, PROJECT_TYPES, formatCents, labelOf, meetingWhen, todayStr,
 } from "@/lib/crm";
 import {
   createProjectAction, saveClientNotesAction, setClientStatusAction, setMeetingStatusAction, setProjectStatusAction,
@@ -16,11 +17,15 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Client" };
 
 export default async function ClientPage({ params, searchParams }) {
-  await requireUser();
+  const user = await requireUser();
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const cid = Number(id);
   const client = Number.isInteger(cid) ? await getClient(BRAND, cid) : null;
   if (!client) notFound();
+  const canBill = isManager(user);
+  const invoices = canBill ? await listInvoices(BRAND, { clientId: cid }) : [];
+  const today = todayStr();
+  const paypalReady = !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
   const [projects, meetings] = await Promise.all([
     listProjects(BRAND, { clientId: cid }),
     listMeetings(BRAND, { limit: 500 }).then((all) => all.filter((m) => m.client_id === cid)),
@@ -65,6 +70,7 @@ export default async function ClientPage({ params, searchParams }) {
                   {[p.start_on && `Starts ${p.start_on}`, p.target_on && `Target ${p.target_on}`].filter(Boolean).join(" · ") || "No dates set"}
                 </p>
                 {p.notes && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted">{p.notes}</p>}
+                {canBill && <InvoicePanel project={p} invoices={invoices.filter((i) => i.project_id === p.id)} paypalReady={paypalReady} today={today} back={`/clients/${client.id}`} />}
                 <form action={setProjectStatusAction} className="mt-2 flex flex-wrap items-center gap-2">
                   <input type="hidden" name="projectId" value={p.id} />
                   <input type="hidden" name="clientId" value={client.id} />

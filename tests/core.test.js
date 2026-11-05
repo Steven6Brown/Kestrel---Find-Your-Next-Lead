@@ -922,3 +922,221 @@ test("the booking link goes into outreach drafts only when one is saved", async 
   assert.ok(withLink.body.includes("pick a time to talk here: https://cal.com/steven/intro"));
   assert.ok(!/[\u2013\u2014]/.test(withLink.body), "no dash punctuation");
 });
+
+// ---------------- PayPal invoicing (against a stand-in for PayPal) ----------------
+
+/** A small fake of the parts of PayPal we use. Records every call so tests can inspect them. */
+function fakePayPal({ expire401Once = false } = {}) {
+  const state = { invoices: new Map(), byRequest: new Map(), calls: [], tokensIssued: 0, failNext: null, n: 0, expireNext: expire401Once };
+  const json = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+  const fetchImpl = async (url, init = {}) => {
+    const u = new URL(String(url));
+    const call = { method: init.method || "GET", path: u.pathname, headers: init.headers || {}, body: init.body ? (init.headers["Content-Type"] === "application/json" ? JSON.parse(init.body) : init.body) : null };
+    state.calls.push(call);
+    if (state.failNext === "network") { state.failNext = null; throw new Error("socket hang up"); }
+    if (u.pathname === "/v1/oauth2/token") {
+      if (!String(call.headers.Authorization).startsWith("Basic ")) return json(401, { error: "invalid_client" });
+      state.tokensIssued++;
+      return json(200, { access_token: "token-" + state.tokensIssued + "-abcdefghij", token_type: "Bearer", expires_in: 32400 });
+    }
+    if (state.expireNext) { state.expireNext = false; return json(401, { name: "AUTHENTICATION_FAILURE" }); }
+    if (!String(call.headers.Authorization).startsWith("Bearer token-")) return json(401, {});
+    if (state.failNext) { const s = state.failNext; state.failNext = null; return json(s, { name: "SERVER", message: "boom secret-id-123" }); }
+    if (call.method === "POST" && u.pathname === "/v2/invoicing/invoices") {
+      const rid = call.headers["PayPal-Request-Id"];
+      if (state.byRequest.has(rid)) return json(201, state.invoices.get(state.byRequest.get(rid)));
+      const b = call.body;
+      if (!b.items?.length || !b.primary_recipients?.[0]?.billing_info?.email_address || !b.detail?.currency_code) {
+        return json(422, { name: "UNPROCESSABLE_ENTITY", message: "Invalid request", details: [{ issue: "MISSING_REQUIRED_FIELD", description: "items required" }] });
+      }
+      const id = "INV2-FAKE-" + String(++state.n).padStart(4, "0");
+      const total = (Number(b.items[0].unit_amount.value)).toFixed(2);
+      const inv = { id, status: "DRAFT", detail: { invoice_number: "0000" + state.n, payment_term: { due_date: "2030-01-31" }, metadata: { recipient_view_url: "https://www.sandbox.paypal.com/invoice/p/#" + id } }, amount: { currency_code: "USD", value: total }, due_amount: { currency_code: "USD", value: total }, _body: b };
+      state.invoices.set(id, inv); state.byRequest.set(rid, id);
+      return json(201, call.headers.Prefer === "return=representation" ? inv : { rel: "self", href: "https://api-m.sandbox.paypal.com/v2/invoicing/invoices/" + id, method: "GET" });
+    }
+    const m = u.pathname.match(/^[/]v2[/]invoicing[/]invoices[/]([^/]+)([/]send)?$/);
+    if (m) {
+      const inv = state.invoices.get(m[1]);
+      if (!inv) return json(404, { name: "RESOURCE_NOT_FOUND", message: "Invoice not found" });
+      if (m[2] && call.method === "POST") { inv.status = "SENT"; return json(202, null); }
+      if (call.method === "GET") { const { _body, ...pub } = inv; return json(200, pub); }
+    }
+    return json(404, {});
+  };
+  state.pay = (id, value) => { const i = state.invoices.get(id); i.status = "PAID"; i.due_amount = { currency_code: "USD", value: "0.00" }; i.payments = { paid_amount: { currency_code: "USD", value } }; };
+  return { fetchImpl, state };
+}
+
+test("paypal client: signs in once, reuses the token, refreshes on expiry, safe errors", async () => {
+  const pp = await import("../lib/paypal.js");
+  pp.clearPayPalTokenCache();
+  const env = { PAYPAL_CLIENT_ID: "ID_VALUE_123", PAYPAL_CLIENT_SECRET: "SECRET_VALUE_456" };
+  assert.throws(() => pp.paypalClient({ env: {} }), /not connected/);
+  assert.throws(() => pp.paypalClient({ env: { ...env, PAYPAL_ENV: "live" } }), /Live PayPal is switched off/);
+  const fake = fakePayPal();
+  const client = pp.paypalClient({ env, fetchImpl: fake.fetchImpl });
+  assert.equal(client.mode, "sandbox");
+  const { id } = await client.createInvoice({ requestId: "req-1", recipientEmail: "c@example.test", itemName: "Website", amountCents: 250050 });
+  assert.match(id, /^INV2-FAKE-/);
+  const create = fake.state.calls.find((c) => c.path === "/v2/invoicing/invoices");
+  assert.equal(create.headers["PayPal-Request-Id"], "req-1");
+  assert.equal(create.body.items[0].unit_amount.value, "2500.50", "dollars string from integer cents");
+  assert.equal(create.body.items[0].quantity, "1");
+  assert.equal(create.body.primary_recipients[0].billing_info.email_address, "c@example.test");
+  assert.equal(create.body.detail.currency_code, "USD");
+  const again = await client.createInvoice({ requestId: "req-1", recipientEmail: "c@example.test", itemName: "Website", amountCents: 250050 });
+  assert.equal(again.id, id, "same request id returns the same invoice");
+  assert.equal(fake.state.invoices.size, 1, "no duplicate was created");
+  await client.getInvoice(id);
+  assert.equal(fake.state.tokensIssued, 1, "one sign in served all the calls");
+  // an expired token is refreshed once and the call retried
+  const f2 = fakePayPal({ expire401Once: true });
+  pp.clearPayPalTokenCache();
+  const c2 = pp.paypalClient({ env, fetchImpl: f2.fetchImpl });
+  await c2.createInvoice({ requestId: "r", recipientEmail: "c@example.test", itemName: "X", amountCents: 1000 });
+  assert.equal(f2.state.tokensIssued, 2);
+  // errors are short, safe, and never contain credentials or tokens
+  f2.state.failNext = 503;
+  await assert.rejects(c2.getInvoice("INV2-FAKE-0001"), (e) => e instanceof pp.PayPalError && /having trouble/.test(e.message) && !/secret-id-123|token-|SECRET_VALUE|ID_VALUE/.test(e.message));
+  f2.state.failNext = "network";
+  await assert.rejects(c2.getInvoice("INV2-FAKE-0001"), /Could not reach PayPal/);
+  await assert.rejects(c2.getInvoice("INV2-NOPE"), /Invoice not found/);
+  await assert.rejects(c2.createInvoice({ requestId: "bad", recipientEmail: "", itemName: "X", amountCents: 100 }), /PayPal said: Invalid request/);
+  // an unexpected reply shape is rejected, not trusted
+  const weird = pp.paypalClient({ env, fetchImpl: async (u) => (String(u).includes("oauth2") ? { ok: true, status: 200, json: async () => ({ access_token: "token-abcdefghij", expires_in: 100 }) } : { ok: true, status: 200, json: async () => ({ hello: "world" }) }) });
+  pp.clearPayPalTokenCache();
+  await assert.rejects(weird.getInvoice("X"), /unexpected reply/);
+  assert.equal(pp.safePayPalUrl("https://www.sandbox.paypal.com/invoice/p/#X"), "https://www.sandbox.paypal.com/invoice/p/#X");
+  assert.equal(pp.safePayPalUrl("https://evil.example/paypal.com"), null);
+  assert.equal(pp.safePayPalUrl("http://www.paypal.com/x"), null);
+  assert.equal(pp.safePayPalUrl("javascript:alert(1)"), null);
+});
+
+test("invoice rules: amounts by kind, no overbilling, status groups, overdue", async () => {
+  const r = await import("../lib/invoicestatus.js");
+  assert.equal(r.amountForKind("full", 100000, 0), 100000);
+  assert.equal(r.amountForKind("full", 100000, 50000), null, "cannot bill the full amount twice");
+  assert.equal(r.amountForKind("deposit", 100001, 0), 50001, "rounds to a whole cent");
+  assert.equal(r.amountForKind("deposit", 100000, 50000), null);
+  assert.equal(r.amountForKind("balance", 100000, 50000), 50000);
+  assert.equal(r.amountForKind("balance", 100000, 0), null, "no balance before a deposit");
+  assert.equal(r.amountForKind("balance", 100000, 100000), null, "nothing left to bill");
+  assert.equal(r.amountForKind("full", null, 0), null);
+  assert.equal(r.amountForKind("bogus", 100, 0), null);
+  assert.equal(r.centsFromPayPal("2500.50"), 250050);
+  assert.equal(r.centsFromPayPal("12"), 1200);
+  assert.equal(r.centsFromPayPal("abc"), null);
+  assert.equal(r.centsFromPayPal(undefined), null);
+  for (const [s, g] of [["DRAFT", "draft"], ["SENT", "sent"], ["UNPAID", "sent"], ["SCHEDULED", "sent"], ["PARTIALLY_PAID", "partial"], ["PAID", "paid"], ["MARKED_AS_PAID", "paid"], ["CANCELLED", "cancelled"], ["REFUNDED", "refunded"], ["PENDING", "pending"], ["FAILED", "failed"], ["SOMETHING_NEW", "unknown"]]) {
+    assert.equal(r.statusGroup(s), g, s);
+  }
+  assert.equal(r.isOverdue({ status: "SENT", due_on: "2026-11-01" }, "2026-11-05"), true);
+  assert.equal(r.isOverdue({ status: "SENT", due_on: "2026-11-05" }, "2026-11-05"), false);
+  assert.equal(r.isOverdue({ status: "PAID", due_on: "2026-11-01" }, "2026-11-05"), false);
+  assert.equal(r.isOverdue({ status: "DRAFT", due_on: "2026-11-01" }, "2026-11-05"), false);
+});
+
+test("invoicing end to end: draft, send, pay, reconcile, outstanding, retries, isolation", async () => {
+  const pp = await import("../lib/paypal.js");
+  const inv = await import("../lib/invoicing.js");
+  pp.clearPayPalTokenCache();
+  const env = { PAYPAL_CLIENT_ID: "ID", PAYPAL_CLIENT_SECRET: "SECRET" };
+  const fake = fakePayPal();
+  const paypal = pp.paypalClient({ env, fetchImpl: fake.fetchImpl });
+
+  const lead = await store.createContact("aquila", { name: "Invoice Lead", email: "billing@example.test", source: "referral" });
+  const { id: clientId } = await store.convertToClient("aquila", lead);
+  const projectId = await store.createProject("aquila", clientId, { name: "Big website", type: "website", status: "in_progress", quotedCents: 100000 });
+  const noQuote = await store.createProject("aquila", clientId, { name: "Unpriced", type: "other", status: "proposed" });
+  await assert.rejects(inv.createDraftInvoice({ brandId: "aquila", projectId: noQuote, kind: "full", paypal }), /quoted amount/);
+  await assert.rejects(inv.createDraftInvoice({ brandId: "aquila", projectId, kind: "balance", paypal }), /not available/);
+  await assert.rejects(inv.createDraftInvoice({ brandId: "other", projectId, kind: "full", paypal }), /Project not found/, "another brand cannot invoice it");
+
+  // deposit
+  const dep = await inv.createDraftInvoice({ brandId: "aquila", projectId, kind: "deposit", paypal });
+  let row = await store.getInvoiceRow("aquila", dep);
+  assert.equal(row.amount_cents, 50000);
+  assert.equal(row.status, "DRAFT");
+  assert.ok(row.paypal_invoice_id.startsWith("INV2-FAKE-"));
+  assert.ok(row.invoice_number, "invoice number read back from PayPal");
+  assert.match(row.view_url, /paypal\.com/);
+  assert.equal(row.due_on, "2030-01-31");
+  assert.equal(await store.invoicedTotalForProject("aquila", projectId), 50000);
+  await assert.rejects(inv.createDraftInvoice({ brandId: "aquila", projectId, kind: "full", paypal }), /not available/, "deposit already billed");
+
+  // sending
+  await assert.rejects(inv.sendInvoice({ brandId: "aquila", invoiceId: 999999, paypal }), /Create the invoice first/);
+  await inv.sendInvoice({ brandId: "aquila", invoiceId: dep, paypal });
+  row = await store.getInvoiceRow("aquila", dep);
+  assert.equal(row.status, "SENT");
+  assert.ok(row.sent_at);
+  assert.ok((await store.listActivities("aquila", lead)).some((a) => a.kind === "payment" && /sent through PayPal/.test(a.body)));
+  await assert.rejects(inv.sendInvoice({ brandId: "aquila", invoiceId: dep, paypal }), /Only a draft/, "no double send");
+  let owed = await store.outstandingSummary("aquila", "2026-11-05");
+  assert.equal(owed.outstandingCents, 50000);
+  assert.equal(owed.overdueCount, 0);
+  const lateOwed = await store.outstandingSummary("aquila", "2030-02-01");
+  assert.equal(lateOwed.overdueCount, 1, "past its due date");
+  assert.equal(lateOwed.overdueCents, 50000);
+
+  // balance invoice
+  const bal = await inv.createDraftInvoice({ brandId: "aquila", projectId, kind: "balance", paypal });
+  assert.equal((await store.getInvoiceRow("aquila", bal)).amount_cents, 50000);
+  await assert.rejects(inv.createDraftInvoice({ brandId: "aquila", projectId, kind: "balance", paypal }), /not available/, "fully billed");
+
+  // payment arrives; reconcile is idempotent
+  fake.state.pay((await store.getInvoiceRow("aquila", dep)).paypal_invoice_id, "500.00");
+  const r1 = await inv.reconcileInvoice({ brandId: "aquila", invoiceId: dep, paypal });
+  assert.equal(r1.becamePaid, true);
+  const r2 = await inv.reconcileInvoice({ brandId: "aquila", invoiceId: dep, paypal });
+  assert.equal(r2.becamePaid, false, "second reconcile changes nothing");
+  const payments = (await store.listActivities("aquila", lead)).filter((a) => a.kind === "payment" && /paid/.test(a.body));
+  assert.equal(payments.length, 1, "one timeline entry for the payment");
+  assert.ok((await store.getInvoiceRow("aquila", dep)).paid_at);
+  owed = await store.outstandingSummary("aquila", "2026-11-05");
+  assert.equal(owed.outstandingCents, 0, "paid money is no longer outstanding (the balance is still a draft)");
+
+  // reconcile all: one PayPal failure does not stop the rest
+  await inv.sendInvoice({ brandId: "aquila", invoiceId: bal, paypal });
+  fake.state.failNext = 500;
+  const sum = await inv.reconcileAll({ brandId: "aquila", paypal });
+  assert.equal(sum.failed, 1);
+  assert.match((await store.getInvoiceRow("aquila", bal)).last_error, /Payment status unavailable/);
+  assert.equal((await store.getInvoiceRow("aquila", bal)).status, "SENT", "status kept when PayPal is down");
+  const sum2 = await inv.reconcileAll({ brandId: "aquila", paypal });
+  assert.equal(sum2.failed, 0);
+  assert.equal((await store.getInvoiceRow("aquila", bal)).last_error, null, "error clears on the next good check");
+
+  // failed create keeps its request id and retries safely
+  const project2 = await store.createProject("aquila", clientId, { name: "Second", type: "app", status: "proposed", quotedCents: 20000 });
+  fake.state.failNext = "network";
+  await assert.rejects(inv.createDraftInvoice({ brandId: "aquila", projectId: project2, kind: "full", paypal }), /Could not reach PayPal/);
+  const failed = (await store.listInvoices("aquila", { projectId: project2 }))[0];
+  assert.equal(failed.status, "FAILED");
+  assert.equal(await store.invoicedTotalForProject("aquila", project2), 0, "a failed invoice is not billed");
+  const before = fake.state.invoices.size;
+  await inv.retryCreate({ brandId: "aquila", invoiceId: failed.id, paypal });
+  assert.equal(fake.state.invoices.size, before + 1);
+  assert.equal((await store.getInvoiceRow("aquila", failed.id)).status, "DRAFT");
+  await inv.retryCreate({ brandId: "aquila", invoiceId: failed.id, paypal });
+  assert.equal(fake.state.invoices.size, before + 1, "retrying a created invoice does nothing");
+
+  // brand isolation
+  assert.equal(await store.getInvoiceRow("other", dep), null);
+  assert.deepEqual(await store.listInvoices("other"), []);
+  assert.equal((await store.outstandingSummary("other", "2030-02-01")).count, 0);
+  await assert.rejects(inv.reconcileInvoice({ brandId: "other", invoiceId: dep, paypal }), /not found/);
+  assert.equal((await store.getProject("other", projectId)), null);
+});
+
+test("the PayPal test address override only ever points at this computer", async () => {
+  const { paypalBaseFor } = await import("../lib/connectors/paypal.js");
+  assert.equal(paypalBaseFor({}), "https://api-m.sandbox.paypal.com");
+  assert.equal(paypalBaseFor({ PAYPAL_ENV: "live" }), "https://api-m.paypal.com");
+  assert.equal(paypalBaseFor({ PAYPAL_TEST_BASE_URL: "http://127.0.0.1:4010" }), "http://127.0.0.1:4010");
+  assert.equal(paypalBaseFor({ PAYPAL_TEST_BASE_URL: "http://localhost:4010/x" }), "http://localhost:4010");
+  for (const bad of ["https://evil.example", "http://evil.example", "http://127.0.0.1.evil.example", "http://192.168.1.5:4010", "ftp://localhost", "not a url", "https://localhost:4010"]) {
+    assert.equal(paypalBaseFor({ PAYPAL_TEST_BASE_URL: bad }), "https://api-m.sandbox.paypal.com", bad);
+  }
+});

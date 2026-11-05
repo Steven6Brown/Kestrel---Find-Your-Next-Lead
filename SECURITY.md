@@ -30,6 +30,15 @@
 - Any secret a connector stores is encrypted at rest and erased on disconnect.
 - The booking link is validated and only rendered as a link. Kestrel does not fetch it, so there is no server-side request to an owner-supplied address.
 
+## Invoicing
+
+- Owner and administrator only for creating, sending, refreshing and reconciling. Members cannot see the money screens.
+- Credentials come only from environment variables. PayPal replies are validated with zod, are never trusted for amounts we bill (amounts come from our own project rows), and error messages are reduced to short text without tokens, headers or credentials (tested).
+- Sending is a separate step with an explicit confirmation, a double send is refused, and a retry of a failed create reuses one request id so PayPal cannot create two.
+- The only place the PayPal address can be changed is a test override that is honored for http://localhost and http://127.0.0.1 only, so credentials cannot be redirected to another host (tested). Live mode needs PAYPAL_ALLOW_LIVE=1.
+- Invoice links are accepted only as https pages on paypal.com.
+- Brand scoped everywhere, and a project in another brand cannot be invoiced (tested).
+
 ## Other controls
 
 - Secrets only in environment variables; `.env*` and `data/` are git-ignored.

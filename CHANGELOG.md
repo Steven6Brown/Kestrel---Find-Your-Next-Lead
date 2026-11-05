@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.0 (branch crm-core)
+- Connections page and connector layer (booking link, PayPal test, Resend status, Google Calendar placeholder). Booking link added to outreach drafts and concept pages.
+
 ## 0.8.0 (branch crm-core)
 - Clients and projects, manual meetings with a Meetings page and Today list, CSV exports of contacts, clients and projects.
 

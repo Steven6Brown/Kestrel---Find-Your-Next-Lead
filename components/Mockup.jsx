@@ -27,7 +27,7 @@ function DraftTag() {
   );
 }
 
-export default function Mockup({ lead, brand }) {
+export default function Mockup({ lead, brand, bookingUrl = null }) {
   const accent = HEX.test(brand.primaryColor || "") ? brand.primaryColor : "#0f6b63";
   const dark = HEX.test(brand.darkColor || "") ? brand.darkColor : "#1b1f23";
   const onAccent = readableOn(accent);
@@ -170,6 +170,12 @@ export default function Mockup({ lead, brand }) {
             business listing details; copy marked as draft is a suggestion, not a statement of fact.
           </p>
           {lead.place_id?.startsWith("osm:") ? <p>Listing data from OpenStreetMap, © OpenStreetMap contributors (ODbL).</p> : null}
+          {bookingUrl ? (
+            <p>
+              Want to talk it through?{" "}
+              <a href={bookingUrl} rel="noopener noreferrer" className="underline underline-offset-4">Pick a time with {brand.name}</a>.
+            </p>
+          ) : null}
           {brand.replyTo ? (
             <p>
               Questions or want this taken down? Email{" "}

@@ -18,7 +18,11 @@ Unit tests (42 in total) cover stages and the status sync, manual contacts witho
 ## Clients, projects, meetings, exports (performed)
 47 unit tests in total. The newest cover money and time parsing, converting a contact once, project totals that skip cancelled work, meeting ownership and stage moves, brand isolation, database constraints, and export contents. In the browser: logged a meeting (stage moved by itself), converted a contact to a client, added a project with a quoted amount, and downloaded all three CSVs.
 
+## Connections (performed)
+52 unit tests in total. The newest cover booking link validation (including local, numeric and credential-bearing addresses), encrypted secrets and erasure on disconnect, brand isolation, PayPal checks with a stand-in for PayPal (sandbox default, live blocked, 401, network failure, bad reply, no credentials in messages), the connector states, and the booking link appearing in drafts only when saved. In the browser: saved a bad then a good link, ran the PayPal test with no credentials, and confirmed the link appears on a public concept page and on a contact page.
+
 ## Not performed
+- A real PayPal sandbox call (no credentials yet) and a real Resend send.
 - Clients, projects and meetings screens at phone width; keyboard-only and screen reader checks.
 - Daylight saving boundaries for meeting times (the conversion helper is tested only for local-time reading).
 - CRM screens at phone width, keyboard-only and screen reader checks, concurrent edits.

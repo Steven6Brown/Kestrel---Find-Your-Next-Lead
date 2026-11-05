@@ -820,3 +820,105 @@ test("contacts export holds the pipeline, not every scanned business", async () 
   const { csvCell } = await import("../lib/leadfilters.js");
   assert.equal(csvCell("=HYPERLINK(1)"), '"\'=HYPERLINK(1)"');
 });
+
+// ---------------- connections ----------------
+
+test("booking link validation only accepts safe public https links", async () => {
+  const { validateBookingLink: v } = await import("../lib/connectors/bookinglink.js");
+  assert.deepEqual(v("https://calendar.app.google/abc123"), { ok: true, value: "https://calendar.app.google/abc123" });
+  assert.equal(v("  https://cal.com/steven/intro#top ").value, "https://cal.com/steven/intro", "fragment removed");
+  for (const bad of ["", "calendar.app.google/abc", "http://cal.com/x", "javascript:alert(1)", "https://user:pw@cal.com/x", "https://localhost/x", "https://127.0.0.1/x", "https://192.168.1.5/x", "https://printer.local/x", "https://intranet/x", "https://[::1]/x", "https://cal.com/" + "a".repeat(300)]) {
+    assert.equal(v(bad).ok, false, bad);
+  }
+});
+
+test("connections store: secrets encrypted, disconnect erases, brand isolated, booking url", async () => {
+  await store.saveConnection("aquila", "booking_link", { status: "connected", config: { url: "https://cal.com/steven/intro" } });
+  assert.equal(await store.getBookingUrl("aquila"), "https://cal.com/steven/intro");
+  assert.equal(await store.getBookingUrl("other"), null, "another brand has none");
+  await store.saveConnection("aquila", "test_provider", { status: "connected", config: { x: 1 }, secret: { token: "super-secret-token-value" }, scopes: "read" });
+  const row = await store.getConnection("aquila", "test_provider");
+  assert.ok(!JSON.stringify(row).includes("super-secret-token-value"), "secret is not stored in plain text");
+  assert.deepEqual(store.readConnectionSecret(row), { token: "super-secret-token-value" });
+  await store.saveConnection("aquila", "test_provider", { status: "connected", config: { x: 2 } }); // update without a secret keeps the old one
+  assert.deepEqual(store.readConnectionSecret(await store.getConnection("aquila", "test_provider")), { token: "super-secret-token-value" });
+  assert.equal(await store.getConnection("other", "test_provider"), null);
+  await store.recordConnectionCheck("aquila", "test_provider", { ok: false, message: "nope" });
+  const bad = await store.getConnection("aquila", "test_provider");
+  assert.equal(bad.status, "error");
+  assert.equal(bad.last_error, "nope");
+  await store.disconnectConnection("aquila", "test_provider");
+  const gone = await store.getConnection("aquila", "test_provider");
+  assert.equal(gone.status, "disconnected");
+  assert.equal(gone.secret_enc, null);
+  assert.equal(gone.config, "{}");
+  await store.disconnectConnection("aquila", "booking_link");
+  assert.equal(await store.getBookingUrl("aquila"), null, "a disconnected link is not used");
+  await store.recordConnectionCheck("aquila", "brand_new", { ok: true });
+  assert.equal((await store.getConnection("aquila", "brand_new")).status, "connected", "check can create the row");
+});
+
+test("paypal check: sandbox by default, live blocked, errors never leak credentials", async () => {
+  const paypal = (await import("../lib/connectors/paypal.js")).default;
+  const env = { PAYPAL_CLIENT_ID: "ID_VALUE_123", PAYPAL_CLIENT_SECRET: "SECRET_VALUE_456" };
+  assert.equal((await paypal.check({ env: {} })).ok, false);
+  const calls = [];
+  const good = async (url, init) => { calls.push({ url: String(url), init }); return { ok: true, status: 200, json: async () => ({ access_token: "tok-1234567890", token_type: "Bearer", expires_in: 32400 }) }; };
+  const ok = await paypal.check({ env, fetchImpl: good });
+  assert.equal(ok.ok, true);
+  assert.match(ok.message, /sandbox/);
+  assert.equal(calls[0].url, "https://api-m.sandbox.paypal.com/v1/oauth2/token");
+  assert.equal(calls[0].init.body, "grant_type=client_credentials");
+  assert.equal(calls[0].init.headers.Authorization, "Basic " + Buffer.from("ID_VALUE_123:SECRET_VALUE_456").toString("base64"));
+  const live = await paypal.check({ env: { ...env, PAYPAL_ENV: "live" }, fetchImpl: good });
+  assert.equal(live.ok, false, "live is blocked until approved");
+  assert.equal(calls.length, 1, "no request was made for the blocked live attempt");
+  const approved = await paypal.check({ env: { ...env, PAYPAL_ENV: "live", PAYPAL_ALLOW_LIVE: "1" }, fetchImpl: good });
+  assert.equal(approved.ok, true);
+  assert.equal(calls[1].url, "https://api-m.paypal.com/v1/oauth2/token");
+  const bad401 = await paypal.check({ env, fetchImpl: async () => ({ ok: false, status: 401, json: async () => ({ error: "invalid_client" }) }) });
+  const boom = await paypal.check({ env, fetchImpl: async () => { throw new Error("socket hang up " + env.PAYPAL_CLIENT_SECRET); } });
+  const weird = await paypal.check({ env, fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ hello: "world" }) }) });
+  const five = await paypal.check({ env, fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }) });
+  for (const r of [bad401, boom, weird, five]) {
+    assert.equal(r.ok, false);
+    assert.ok(!r.message.includes("SECRET_VALUE_456") && !r.message.includes("ID_VALUE_123") && !r.message.includes("tok-"), "no credentials in messages");
+  }
+  assert.match(bad401.message, /rejected/);
+});
+
+test("connector registry: states and the other connectors", async () => {
+  const { CONNECTORS, describeConnector, getConnector, connectorIds } = await import("../lib/connectors/index.js");
+  assert.deepEqual(connectorIds(), ["booking_link", "paypal", "resend", "google_calendar"]);
+  assert.equal(getConnector("nope"), null);
+  const book = getConnector("booking_link");
+  assert.equal(describeConnector(book, null).state, "not_connected");
+  assert.equal(describeConnector(book, { status: "connected", config: JSON.stringify({ url: "https://cal.com/x" }) }).state, "connected");
+  assert.equal(describeConnector(book, { status: "error", config: "{}", last_error: "bad" }).detail, "bad");
+  const pp = getConnector("paypal");
+  assert.equal(describeConnector(pp, null, {}).state, "not_connected");
+  assert.match(describeConnector(pp, null, {}).detail, /PAYPAL_CLIENT_ID/);
+  assert.equal(describeConnector(pp, { status: "connected" }, { PAYPAL_CLIENT_ID: "a", PAYPAL_CLIENT_SECRET: "b" }).state, "connected");
+  assert.equal(describeConnector(pp, { status: "error", last_error: "x" }, { PAYPAL_CLIENT_ID: "a", PAYPAL_CLIENT_SECRET: "b" }).state, "error");
+  const g = getConnector("google_calendar");
+  assert.equal(describeConnector(g, null).state, "unavailable");
+  assert.equal((await g.check()).ok, false);
+  const re = getConnector("resend");
+  assert.equal((await re.check({ env: {} })).ok, false);
+  assert.equal((await re.check({ env: { RESEND_API_KEY: "k", SENDER_EMAIL: "a@b.test" } })).ok, true);
+  for (const c of CONNECTORS) {
+    assert.ok(c.id && c.name && c.description && ["setting", "env", "unavailable"].includes(c.mode));
+    assert.equal(typeof c.check, "function");
+  }
+});
+
+test("the booking link goes into outreach drafts only when one is saved", async () => {
+  const { buildDraft } = await import("../lib/email.js");
+  const brand = getBrand("aquila");
+  const lead = { name: "Draft Co", city: "Erie", phone: "" };
+  const without = buildDraft({ lead, brand, mockupLink: "https://x.test/m/1" });
+  assert.ok(!without.body.includes("pick a time"));
+  const withLink = buildDraft({ lead, brand, mockupLink: "https://x.test/m/1", bookingLink: "https://cal.com/steven/intro" });
+  assert.ok(withLink.body.includes("pick a time to talk here: https://cal.com/steven/intro"));
+  assert.ok(!/[\u2013\u2014]/.test(withLink.body), "no dash punctuation");
+});

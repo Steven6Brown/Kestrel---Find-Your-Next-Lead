@@ -23,6 +23,13 @@
 - Marking someone not interested suppresses their address and rejects pending drafts.
 - Clients, projects and meetings are brand scoped the same way (inserted with a SELECT from the owning row, so a record cannot be attached to another brand's contact or client), with database CHECK constraints on types, statuses and meeting places. Money is stored as integer cents and parsed from a strict pattern. CSV exports use an allowlist of kinds, require a signed-in session, and neutralize spreadsheet formula injection.
 
+## Connections
+
+- Owner and administrator only. Provider ids come from an allowlist; users cannot name arbitrary providers.
+- PayPal and Resend credentials are read from the server environment only, never stored in the database, never sent to the browser, and never included in error messages (tested). Live PayPal stays blocked unless PAYPAL_ALLOW_LIVE=1.
+- Any secret a connector stores is encrypted at rest and erased on disconnect.
+- The booking link is validated and only rendered as a link. Kestrel does not fetch it, so there is no server-side request to an owner-supplied address.
+
 ## Other controls
 
 - Secrets only in environment variables; `.env*` and `data/` are git-ignored.

@@ -68,7 +68,8 @@ export async function deleteCampaignAction(formData) {
 
 async function makeDraft(lead) {
   const brand = getBrand(BRAND);
-  const { subject, body } = buildDraft({ lead, brand, mockupLink: mockupUrl(lead.mockup_token) });
+  const bookingLink = (await store.getBookingUrl(BRAND)) || "";
+  const { subject, body } = buildDraft({ lead, brand, mockupLink: mockupUrl(lead.mockup_token), bookingLink });
   await store.saveDraft(BRAND, lead.id, { subject, body });
 }
 

@@ -2,7 +2,7 @@ import { BRAND } from "@/lib/auth";
 import { ChipRadio } from "@/components/Chips";
 import MeetingForm from "@/components/MeetingForm";
 import Link from "next/link";
-import { getClientByLead, listActivities, listMeetings, tasksForLead } from "@/lib/store";
+import { getBookingUrl, getClientByLead, listActivities, listMeetings, tasksForLead } from "@/lib/store";
 import { KIND_LABELS, LOGGABLE_KINDS, MEETING_LOCATIONS, QUICK_DUE, STAGES, dueLabel, labelOf, meetingWhen, sourceLabel, todayStr } from "@/lib/crm";
 import { addTaskAction, addTimelineAction, completeTaskAction, saveOwnerNotesAction, setStageAction } from "@/app/(admin)/crm-actions";
 import { convertToClientAction } from "@/app/(admin)/clients-actions";
@@ -11,6 +11,7 @@ const when = (iso) => new Date(iso).toLocaleString([], { dateStyle: "medium", ti
 
 /** Pipeline stage, follow-ups, notes and the timeline for one contact. */
 export default async function CrmPanels({ lead }) {
+  const bookingUrl = await getBookingUrl(BRAND);
   const [tasks, activities, client, meetings] = await Promise.all([
     tasksForLead(BRAND, lead.id), listActivities(BRAND, lead.id, 100), getClientByLead(BRAND, lead.id),
     listMeetings(BRAND, { limit: 500 }).then((all) => all.filter((m) => m.lead_id === lead.id)),
@@ -56,6 +57,11 @@ export default async function CrmPanels({ lead }) {
 
       <section aria-labelledby="mtg-h" className="card mt-8 p-5">
         <h2 id="mtg-h" className="text-2xl font-semibold">Meetings</h2>
+        {bookingUrl ? (
+          <p className="mt-2 break-all text-sm text-muted">Your booking link, to paste into a reply: <a href={bookingUrl} target="_blank" rel="noopener noreferrer" className="text-ink underline underline-offset-4">{bookingUrl}</a></p>
+        ) : (
+          <p className="mt-2 text-sm text-muted">Add your booking link under Connections to share it from here.</p>
+        )}
         {meetings.length > 0 && (
           <ul className="mt-3 divide-y divide-line border-y border-line">
             {meetings.map((m) => (

@@ -14,7 +14,7 @@ export default async function AdminLayout({ children }) {
     ["/", "Scanner"],
     ["/queue", "Review queue"],
     ["/optouts", "Opt-outs"],
-    ...(isManager(user) ? [["/users", "Users"], ["/audit", "Audit"]] : []),
+    ...(isManager(user) ? [["/connections", "Connections"], ["/users", "Users"], ["/audit", "Audit"]] : []),
   ];
   return (
     <>

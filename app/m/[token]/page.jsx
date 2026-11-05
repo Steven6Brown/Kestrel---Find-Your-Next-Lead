@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Mockup from "@/components/Mockup";
-import { getLeadByToken } from "@/lib/store";
+import { getBookingUrl, getLeadByToken } from "@/lib/store";
 import { getBrand } from "@/config/brands";
 
 // Hosted concept page. Public by design (unguessable 128 bit token), never indexed.
@@ -19,5 +19,5 @@ export default async function MockupPage({ params }) {
   const { token } = await params;
   const lead = await getLeadByToken(token);
   if (!lead || lead.bucket !== "no_website" || lead.status === "do_not_contact") notFound();
-  return <Mockup lead={lead} brand={getBrand(lead.brand_id)} />;
+  return <Mockup lead={lead} brand={getBrand(lead.brand_id)} bookingUrl={await getBookingUrl(lead.brand_id)} />;
 }

@@ -13,7 +13,7 @@ export const metadata = { title: "App accounts" };
 
 const HELP = {
   facebook: { id: "Facebook Page ID", token: "Page access token", note: "Posts go to your Facebook Page, never a personal profile." },
-  instagram: { id: "Instagram professional account ID", token: "Access token", note: "The Instagram account must be a Business or Creator account linked to a Facebook Page." },
+  instagram: { id: "Instagram professional account ID", token: "Access token", note: "Automatic posting needs a Business or Creator account linked to a Facebook Page (a free Page is fine), a Meta developer app, and Kestrel hosted at a public https address. Until then, leave this empty: approve posts here, then post by hand using the Download graphic and Mark as posted buttons." },
   linkedin: { id: "LinkedIn member ID", token: "Access token", note: "Posts go to your personal profile. Company pages need LinkedIn&apos;s approval and are not supported yet." },
 };
 const PILL = { connected: ["Connected", "bg-ok-bg text-ok"], error: ["Needs attention", "bg-bad-bg text-bad"], disconnected: ["Not connected", "bg-warn-bg text-warn"] };

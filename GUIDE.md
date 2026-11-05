@@ -146,3 +146,9 @@ Do these in order. Each should work.
 5. **Schedule or post now.** Pick a time, or Post now. TikTok: copy the text, upload your video in TikTok, press Mark as posted.
 6. **Scheduled posts need the scheduler.** See ARCHITECTURE.md (Social module). Instagram and Facebook posting also needs Kestrel on a public https address.
 7. **See results.** The Social page shows clicks on tracked links; on a post, press "Count an inquiry" when someone contacts you because of it.
+### AI writing
+1. Make an account at console.anthropic.com, add a few dollars of credit and set a spending limit there. This is separate from any chat subscription you have.
+2. Create an API key, add `ANTHROPIC_API_KEY=` and the key to `.env.local`, and restart Kestrel.
+3. Social, AI writing: pick the app, say what to promote, list the real facts, choose how many posts and which platforms, press Write drafts. Wait up to a minute.
+4. Read each draft closely. The AI can still get a detail wrong, so check every claim before you tick the approval boxes.
+The page shows this month's estimated spend against the limit (default 5 dollars; change SOCIAL_AI_MONTHLY_CAP_USD).

@@ -24,6 +24,7 @@ export function SocialTabs({ current, appId }) {
   const tabs = [
     ["/social", "Calendar"],
     ["/social/queue", "Review queue"],
+    ["/social/write", "AI writing"],
     ["/social/new", "New post"],
     ["/social/import", "Import drafts"],
     ["/social/apps", "Apps and accounts"],

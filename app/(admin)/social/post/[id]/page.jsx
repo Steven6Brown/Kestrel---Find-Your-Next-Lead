@@ -115,7 +115,7 @@ export default async function PostPage({ params, searchParams }) {
 
               {manager && ["approved", "scheduled"].includes(v.status) && (
                 <div className="mt-4 border-t border-line pt-4">
-                  {spec.direct ? (
+                  {spec.direct && acc?.has_secret ? (
                     <div className="flex flex-wrap items-end gap-3">
                       <form action={scheduleAction} className="flex flex-wrap items-end gap-2">
                         <HID id={v.id} />
@@ -126,7 +126,9 @@ export default async function PostPage({ params, searchParams }) {
                       {v.status === "scheduled" && <form action={unscheduleAction}><HID id={v.id} /><button className="btn" type="submit">Unschedule</button></form>}
                     </div>
                   ) : (
-                    <form action={markPostedAction}><HID id={v.id} /><p className="mb-2 text-muted">Copy the text above, upload your video in TikTok, then:</p><button className="btn btn-primary" type="submit">Mark as posted</button></form>
+                    <form action={markPostedAction}><HID id={v.id} /><p className="mb-2 text-muted">{spec.direct ? `No ${spec.name} account is connected, so post it by hand: copy the text above, download the graphic, post it in the app, then press Mark as posted.` : "Copy the text above, upload your video in TikTok, then:"}</p>
+                      {v.asset_id && <a className="btn mb-2 mr-2" href={`/social/media/${v.asset_id}`} download={`${app.name}-${v.platform}.png`}>Download graphic</a>}
+                      <button className="btn btn-primary" type="submit">Mark as posted</button></form>
                   )}
                 </div>
               )}

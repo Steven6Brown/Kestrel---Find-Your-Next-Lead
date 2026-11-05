@@ -12,6 +12,7 @@ import { approve, ensureImage, publishDue } from "@/lib/social/service";
 import { checkAccount } from "@/lib/social/adapters";
 import { sanitizeUpload } from "@/lib/social/graphics";
 import { allow } from "@/lib/ratelimit";
+import { generate } from "@/lib/social/ai";
 
 // Anyone signed in can draft. Approving, scheduling, posting and connecting accounts are owner and admin only.
 const managers = { roles: ["owner", "admin"] };
@@ -169,6 +170,32 @@ export async function importAction(formData) {
   }
   await audit(BRAND, user.id, "social_import", `${made.length} post(s)`, await ip());
   go(made.length === 1 ? `/social/post/${last}` : "/social/queue", `${made.length} draft${made.length === 1 ? "" : "s"} imported. Nothing is posted until you approve it.`);
+}
+
+// Writes drafts with the AI. This spends money, so it is owner and admin only and goes through the monthly cap.
+export async function writeWithAiAction(formData) {
+  const user = await requireUser(managers);
+  if (!allow(`social-ai:${user.id}`, 6, 60_000)) go("/social/write", "Slow down a little and try again.", "bad");
+  const app = await appOr(formData, "/social/write");
+  const idea = String(formData.get("idea") || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim();
+  const facts = String(formData.get("facts") || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim();
+  if (idea.length < 5 || idea.length > 600) go("/social/write", "Say what to promote, in 5 to 600 characters.", "bad");
+  if (facts.length > 1500) go("/social/write", "Keep the facts under 1500 characters.", "bad");
+  const count = Math.min(Math.max(Number(formData.get("count")) || 1, 1), 3);
+  const platforms = PLATFORM_IDS.filter((p) => formData.getAll("platforms").includes(p));
+  const r = await generate({
+    app, idea, facts, count, platforms,
+    deps: { getSpend: async (m) => (await ss.getAiUsage(BRAND, m)).cost, addSpend: (m, u) => ss.addAiUsage(BRAND, m, u) },
+  });
+  await audit(BRAND, user.id, "social_ai_write", r.ok ? `${r.posts.length} post(s) for ${app.name}` : "no result", await ip());
+  if (!r.ok) go("/social/write", r.error, "bad");
+  let last = null;
+  for (const p of r.posts) {
+    last = await ss.createPost(BRAND, app.id, { topic: p.topic, goal: p.goal, source: "import", createdBy: user.id, variants: p.variants.map((v) => ({ ...v, link_target: "" })) });
+    await renderAll(app, last);
+  }
+  revalidatePath("/social", "layout");
+  go(r.posts.length === 1 ? `/social/post/${last}` : "/social/queue", `The AI wrote ${r.posts.length} draft${r.posts.length === 1 ? "" : "s"}. Read each one carefully and check every claim before approving.`);
 }
 
 // ---------- editing, approving, scheduling ----------

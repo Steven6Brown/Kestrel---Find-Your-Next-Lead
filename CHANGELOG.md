@@ -1,8 +1,11 @@
 # Changelog
 
+## 2.4.0 (branch crm-core): AI writing
+- Social, AI writing: tell the AI what to promote and the real facts, and it writes drafts for each platform (model claude-opus-5-5, SOCIAL_AI_MODEL changes it). Drafts go through the same approval as everything else. Owner and admin only.
+- Monthly spending cap (default 5 USD, SOCIAL_AI_MONTHLY_CAP_USD) with an estimate shown on the page; a call is refused before any money is spent if it could pass the cap. New dependency: @anthropic-ai/sdk. New table: ai_usage.
 ## 2.3.0 (branch crm-core): Social module
 - New Social section (menu: Reach out, Social posts). One entry per app, each with its own brand kit (colors, tone, never say list, calls to action, hashtags, allowed link websites) and its own Facebook Page, Instagram, LinkedIn (personal profile) accounts. TikTok is assisted posting only.
-- Make a post from a fill in the blank format (app promo, new version, tip, seminar, project showcase, question and answer), write your own, or paste drafts made by the AI in a chat (Import drafts shows a ready made request). No paid AI is called anywhere.
+- Make a post from a fill in the blank format (app promo, new version, tip, seminar, project showcase, question and answer), write your own, or paste drafts made by the AI in a chat (Import drafts shows a ready made request). The AI drafting was added afterwards (see below).
 - Every post gets one draft per platform plus a template graphic at that platform's size. Each draft shows exactly what will be posted, with length, hashtag, image and never say checks. Approval needs a three item checklist and records who and when. Editing after approval undoes it.
 - Scheduling and publishing: a scheduled approved post goes out via the cron endpoint `/api/cron/social` (or Post now). The publisher re-checks everything, honors a per account daily cap, never posts twice, and marks failures with a Retry.
 - Tracked short links (`/l/code`): totals of clicks, plus a button to count an inquiry. Public images for Instagram and Facebook are served only through signed, expiring links (`/sm/token`).

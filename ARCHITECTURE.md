@@ -84,7 +84,7 @@ OpenStreetMap often lacks website tags, so a scanned business can look website-l
 
 **Status:** built and tested against stand-ins only. No live Facebook, Instagram or LinkedIn call has been made (see TESTING.md).
 
-**Confirmed (owner):** organic posts only, no paid ads; Facebook, Instagram, LinkedIn, TikTok; built inside Kestrel; human approval before anything posts; zero recurring cost, so no paid AI (drafts come from templates or from text the owner pastes from an AI chat); each mobile app has its own accounts; LinkedIn personal profile first; TikTok assisted.
+**Confirmed (owner):** organic posts only, no paid ads; Facebook, Instagram, LinkedIn, TikTok; built inside Kestrel; human approval before anything posts; drafts come from templates, from text pasted from an AI chat (free), or from the AI writing page (paid, added later at the owner's request, see below); each mobile app has its own accounts; LinkedIn personal profile first; TikTok assisted.
 
 **Decisions and assumptions (change if wrong):**
 - **Inside Kestrel, not separate software.** It reuses sign-in, roles, audit log, encryption, the cron secret pattern and the approval habit. Separate software would duplicate all of that and need its own hosting.
@@ -101,3 +101,9 @@ OpenStreetMap often lacks website tags, so a scanned business can look website-l
 **Files:** `lib/social/` (platforms rules, zod schemas, templates, graphics, links and signed media, adapters, service with the approval gate and publisher), `lib/socialstore.js` (all SQL, brand scoped), `app/(admin)/social/` (pages and server actions), public `app/l/[code]` and `app/sm/[token]`, `app/api/cron/social`.
 
 **Not built:** OAuth, video upload and direct video posting, TikTok direct posting, LinkedIn company pages, an inbound website form that sets lead source automatically (inquiries are counted by hand for now), AI generation provider (the interface point is the Import page).
+### AI writing (added at the owner's request)
+- **Remote inference** through the Anthropic API (`lib/social/ai.js`, official `@anthropic-ai/sdk`). Costs money per call; the owner accepted this and said quality matters more than cost. Default model `claude-opus-5-5` (about 4 USD in and 20 USD out per million tokens at last check of the pricing table); `SOCIAL_AI_MODEL` overrides it.
+- **Spending cap:** `ai_usage` totals per month, default cap 5 USD (a default I chose, since no budget was given; change `SOCIAL_AI_MONTHLY_CAP_USD`). Before each call the worst case (input plus the full output allowance) must fit under the cap. The figure shown is an estimate from published prices, not the Anthropic bill; set a limit in the Anthropic console too.
+- **What is sent:** the app's brand kit and the idea and facts typed on the page. Never contacts, client data, CRM notes or secrets.
+- **Trust:** the reply is untrusted. It is parsed with the same zod schema as imported drafts, retried once if malformed, filtered to the chosen platforms, and saved as drafts only. The system prompt forbids invented statistics, testimonials, prices and claims and tells the AI that typed text is information, not instructions. The approval checklist and never say list still apply.
+- **Not done:** the server side refusal fallback parameter (a refusal just shows a message), streaming (replies are capped at 12000 tokens and finish in under a minute), and any live run against the real API (no key was available).

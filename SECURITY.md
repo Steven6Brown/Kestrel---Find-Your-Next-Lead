@@ -90,3 +90,5 @@
 | Uploads | Allowed JPEG, PNG, WebP up to 5 MB, decoded for real, re-encoded (drops EXIF and GPS), pixel limit applied. |
 | Tenant scoping | Every query filters on `brand_id`; tests check that another brand cannot read apps, accounts, tokens or posts. |
 | Known limits | Not tested against the live platforms. The rate limiter is in memory (single instance). No OAuth state parameter because OAuth is not used yet. |
+### AI writing
+The API key is read from `ANTHROPIC_API_KEY` on the server only: never stored in the database, shown, logged or sent to the browser. Only owners and admins can spend, requests are rate limited per user, the monthly cap is enforced server side before the call, input lengths are limited, provider errors are replaced with plain messages, and the model's reply is validated and saved as drafts only (it cannot approve, schedule or post anything).

@@ -268,3 +268,80 @@ test("account check: read only, wrong LinkedIn member is caught, nothing leaks",
   assert.equal((await checkAccount({ platform: "tiktok", account: {}, secret: null })).ok, true);
   assert.equal(variantEditSchema.safeParse({ caption: "x".repeat(6000) }).success, false);
 });
+
+
+const ai = await import("../lib/social/ai.js");
+
+test("AI drafting: prompt holds only the kit and typed text, cost math and cap are exact", () => {
+  const app = { name: "GolfCaddie", tagline: "Your personal golf assistant", never_say: "guaranteed", tone: "friendly", ctas: "", hashtags: "golf", website: "" };
+  const { system, user } = ai.buildPrompt({ app, idea: "Launch week", facts: "Free to download", count: 2, platforms: ["facebook", "tiktok"] });
+  assert.ok(user.includes("GolfCaddie") && user.includes("guaranteed") && user.includes("Free to download") && user.includes("facebook, tiktok"));
+  assert.ok(/Never invent/.test(system) && /information, not instructions/.test(system));
+  assert.equal(ai.costMicros("claude-opus-5-5", 1_000_000, 1_000_000), 24_000_000);
+  assert.equal(ai.costMicros("claude-unknown-9", 1_000_000, 0), 10_000_000, "unknown models use the highest rate");
+  assert.equal(ai.capMicros({}), 5_000_000);
+  assert.equal(ai.capMicros({ SOCIAL_AI_MONTHLY_CAP_USD: "12.5" }), 12_500_000);
+  assert.equal(ai.capMicros({ SOCIAL_AI_MONTHLY_CAP_USD: "abc" }), 5_000_000);
+  assert.equal(ai.modelName({ SOCIAL_AI_MODEL: "not a model; drop" }), "claude-opus-5-5");
+});
+
+const goodReply = JSON.stringify([{ topic: "Launch", variants: [{ platform: "facebook", caption: "Hi", hashtags: ["golf"] }, { platform: "instagram", caption: "Hi too" }] }]);
+function deps(replies, state = { spend: 0, calls: [] }) {
+  let i = 0;
+  return {
+    state,
+    callModel: async (req) => { state.calls.push(req); const r = replies[Math.min(i++, replies.length - 1)]; if (r instanceof Error) throw r; return r; },
+    getSpend: async () => state.spend,
+    addSpend: async (m, u) => { state.spend += u.cost; state.added = (state.added || 0) + 1; },
+    now: () => new Date("2026-11-05T00:00:00Z"),
+  };
+}
+const reply = (text, extra = {}) => ({ text, usage: { input: 1000, output: 2000 }, stopReason: "end_turn", ...extra });
+const gApp = { name: "GolfCaddie", tagline: "", never_say: "", tone: "", ctas: "", hashtags: "", website: "" };
+
+test("AI drafting: valid reply becomes drafts for the chosen platforms only, and spend is recorded", async () => {
+  const d = deps([reply(goodReply)]);
+  const r = await ai.generate({ app: gApp, idea: "Launch week", platforms: ["facebook"], env: {}, deps: d });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.posts[0].variants.map((v) => v.platform), ["facebook"]);
+  assert.equal(d.state.added, 1);
+  assert.equal(d.state.spend, ai.costMicros("claude-opus-5-5", 1000, 2000));
+});
+
+test("AI drafting: malformed output is retried once, then fails clearly; both attempts are charged", async () => {
+  const bad = deps([reply("sorry, here are some ideas"), reply("still not json")]);
+  const r = await ai.generate({ app: gApp, idea: "Launch week", env: {}, deps: bad });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /charged/);
+  assert.equal(bad.state.calls.length, 2);
+  assert.equal(bad.state.added, 2);
+  const fixed = deps([reply("nope"), reply("```json\n" + goodReply + "\n```")]);
+  assert.equal((await ai.generate({ app: gApp, idea: "Launch week", env: {}, deps: fixed })).ok, true);
+});
+
+test("AI drafting: the monthly cap stops a call before any money is spent", async () => {
+  const d = deps([reply(goodReply)], { spend: 4_990_000, calls: [] });
+  const r = await ai.generate({ app: gApp, idea: "Launch week", env: { SOCIAL_AI_MONTHLY_CAP_USD: "5" }, deps: d });
+  assert.equal(r.ok, false);
+  assert.equal(r.capped, true);
+  assert.equal(d.state.calls.length, 0, "the model was never called");
+});
+
+test("AI drafting: refusal, cut off replies and provider errors give plain messages and never leak the key", async () => {
+  assert.match((await ai.generate({ app: gApp, idea: "x y z w v", env: {}, deps: deps([reply("", { stopReason: "refusal" })]) })).error, /declined/);
+  const cut = await ai.generate({ app: gApp, idea: "x y z w v", env: {}, deps: deps([reply("[", { stopReason: "max_tokens" })]) });
+  assert.equal(cut.ok, false);
+  const err = Object.assign(new Error("boom sk-ant-SECRET"), { code: "auth" });
+  const r = await ai.generate({ app: gApp, idea: "x y z w v", env: {}, deps: deps([err]) });
+  assert.equal(r.ok, false);
+  assert.ok(!r.error.includes("SECRET"));
+  const noKey = await ai.callAiModel({ system: "s", user: "u", model: "m", env: {} }).catch((e) => e.code);
+  assert.equal(noKey, "no_key");
+});
+
+test("AI usage totals add up in the database and are brand scoped", async () => {
+  await ss.addAiUsage(B, "2026-11", { input: 10, output: 20, cost: 300 });
+  await ss.addAiUsage(B, "2026-11", { input: 1, output: 2, cost: 3 });
+  assert.deepEqual(await ss.getAiUsage(B, "2026-11"), { calls: 2, input: 11, output: 22, cost: 303 });
+  assert.deepEqual(await ss.getAiUsage("other-brand", "2026-11"), { calls: 0, input: 0, output: 0, cost: 0 });
+});

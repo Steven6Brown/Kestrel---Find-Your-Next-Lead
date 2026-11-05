@@ -10,6 +10,7 @@ import { DEFAULT_BRAND_ID, getBrand } from "@/config/brands";
 import { countSentToday, getDraftByLead, getLead, outreachReady } from "@/lib/store";
 import { resolveBody, sendProblems } from "@/lib/email";
 import { mockupUrl } from "@/lib/tokens";
+import { auditOf, isRedesignLead, longDate } from "@/lib/redesign";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Lead" };
@@ -23,6 +24,8 @@ export default async function LeadPage({ params, searchParams }) {
   const brand = getBrand(DEFAULT_BRAND_ID);
   const draft = await getDraftByLead(DEFAULT_BRAND_ID, leadId);
   const isNoSite = lead.bucket === "no_website";
+  const redesign = isRedesignLead(lead);
+  const audit = auditOf(lead);
   const needsCheck = isNoSite && !outreachReady(lead);
   const checkUrl = `https://www.google.com/search?${new URLSearchParams({ q: [lead.name, lead.city, lead.region].filter(Boolean).join(" ") })}`;
   const problems = draft ? await sendProblems({ lead, draft, brand, sentToday: await countSentToday(DEFAULT_BRAND_ID) }) : [];
@@ -104,11 +107,19 @@ export default async function LeadPage({ params, searchParams }) {
         </form>
       </section>
 
-      {isNoSite ? (
+      {audit ? (
+        <section aria-labelledby="audit-h" className="mt-8 border border-line bg-surface p-5">
+          <h2 id="audit-h" className="text-2xl font-semibold">Website quality: {audit.score} out of 100</h2>
+          <p className="mt-1 text-muted">An automated read of the home page of <a className="break-all underline underline-offset-4" href={audit.website} target="_blank" rel="noopener noreferrer">{audit.website}</a>{audit.checkedAt ? ` on ${longDate(audit.checkedAt)}` : ""}. It can miss things, so look at the site yourself before sending anything.</p>
+          {audit.reasons.length ? <ul className="mt-3 list-disc pl-5">{audit.reasons.map((r) => <li key={r}>{r}</li>)}</ul> : <p className="mt-3">No problems found by the check.</p>}
+        </section>
+      ) : null}
+
+      {isNoSite || redesign ? (
         <>
           <section aria-labelledby="mock-h" className="mt-8 border border-line bg-surface p-5">
-            <h2 id="mock-h" className="text-2xl font-semibold">Mockup</h2>
-            <p className="mt-1 text-muted">Generated automatically from this lead&apos;s real listing data.</p>
+            <h2 id="mock-h" className="text-2xl font-semibold">{redesign ? "Redesign concept" : "Mockup"}</h2>
+            <p className="mt-1 text-muted">{redesign ? "Generated from this lead's real listing data plus the quality check above. Nothing is copied from their site." : "Generated automatically from this lead's real listing data."}</p>
             <p className="mt-3 break-all"><a className="underline underline-offset-4" href={`/m/${lead.mockup_token}`} target="_blank" rel="noopener noreferrer">{mockupUrl(lead.mockup_token)}</a> (opens in a new tab)</p>
           </section>
 

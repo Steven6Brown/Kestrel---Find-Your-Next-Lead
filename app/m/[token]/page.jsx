@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Mockup from "@/components/Mockup";
 import { getBookingUrl, getLeadByToken } from "@/lib/store";
 import { getBrand } from "@/config/brands";
+import { auditOf, isRedesignLead } from "@/lib/redesign";
 
 // Hosted concept page. Public by design (unguessable 128 bit token), never indexed.
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export async function generateMetadata({ params }) {
 export default async function MockupPage({ params }) {
   const { token } = await params;
   const lead = await getLeadByToken(token);
-  if (!lead || lead.bucket !== "no_website" || lead.status === "do_not_contact") notFound();
-  return <Mockup lead={lead} brand={getBrand(lead.brand_id)} bookingUrl={await getBookingUrl(lead.brand_id)} />;
+  const concept = lead && (lead.bucket === "no_website" || isRedesignLead(lead));
+  if (!lead || !concept || lead.status === "do_not_contact") notFound();
+  return <Mockup lead={lead} brand={getBrand(lead.brand_id)} bookingUrl={await getBookingUrl(lead.brand_id)} audit={auditOf(lead)} />;
 }

@@ -1529,7 +1529,7 @@ test("scoring: a well built page scores high, an old one low, and reasons say wh
   const reasons = a.reasonsFrom(bad.checks);
   assert.ok(reasons.length >= 4 && reasons.length <= 5);
   assert.ok(reasons.some((r) => /mobile layout|tiny desktop/.test(r)));
-  assert.ok(reasons.some((r) => /outdated code/.test(r)));
+  assert.ok(reasons.some((r) => /older page code/.test(r)));
   assert.deepEqual(a.reasonsFrom(good.checks), []);
   // pieces
   const mid = a.analyzeHtml({ html: GOOD_HTML.replace(/<meta name="viewport"[^>]*>/, ""), finalUrl: "https://x.example/", ms: 600, bytes: 4000 });
@@ -1724,4 +1724,97 @@ test("the waiting count only includes leads a check would actually look up", asy
   await store.applyWebsiteVerification("aquila", fresh, null);
   assert.equal(await store.countWaitingForLookup("aquila"), before - 1, "looked up and not found: no longer waiting, still unverified");
   assert.equal(await store.countWaitingForLookup("other"), 0);
+});
+
+// ---------------- redesign concept and email (step 3) ----------------
+
+const scoredLead = (o = {}) => ({
+  name: "Old Site Bakery", city: "Akron", phone: "(330) 555-0100", bucket: "has_website", status: "new", website: "https://oldsite.example/",
+  audit_status: "ok", audit_score: 41, audited_at: "2026-11-05T15:30:00.000Z",
+  audit_json: JSON.stringify({ reasons: ["No mobile layout setting, so phones usually show a tiny desktop page.", "Does not load over HTTPS, so browsers warn visitors it is not secure.", "No phone link, email link or form found on the home page.", "Fourth reason that should not appear."] }),
+  ...o,
+});
+
+test("redesign helpers: who qualifies, what the check said, dates", async () => {
+  const r = await import("../lib/redesign.js");
+  assert.equal(r.isRedesignLead(scoredLead()), true);
+  assert.equal(r.isRedesignLead(scoredLead({ audit_status: "blocked", audit_score: null })), false);
+  assert.equal(r.isRedesignLead(scoredLead({ audit_score: null })), false, "no score, no redesign lead");
+  assert.equal(r.isRedesignLead(scoredLead({ audit_status: "chain" })), false);
+  assert.equal(r.isRedesignLead(scoredLead({ bucket: "no_website" })), false);
+  assert.equal(r.isRedesignLead(scoredLead({ status: "do_not_contact" })), false);
+  assert.equal(r.isRedesignLead(scoredLead({ audit_score: 0 })), true, "a score of zero is still a score");
+  assert.equal(r.isRedesignLead(null), false);
+  const a = r.auditOf(scoredLead());
+  assert.equal(a.score, 41);
+  assert.equal(a.reasons.length, 4);
+  assert.equal(a.website, "https://oldsite.example/");
+  assert.equal(r.auditOf(scoredLead({ audit_json: "{not json" })).reasons.length, 0, "bad stored data does not throw");
+  assert.equal(r.auditOf(scoredLead({ bucket: "no_website" })), null);
+  assert.equal(r.longDate("2026-11-05T23:59:00.000Z"), "November 5, 2026", "UTC day, not the reader's");
+  assert.equal(r.longDate("garbage"), "");
+});
+
+test("the redesign email says what was checked, uses only measured findings, and keeps every guardrail", async () => {
+  const { buildRedesignDraft, UNSUB_TOKEN } = await import("../lib/email.js");
+  const brand = getBrand("aquila");
+  const lead = scoredLead();
+  const { subject, body } = buildRedesignDraft({ lead, brand, mockupLink: "https://x.test/m/abc", bookingLink: "https://cal.com/x" });
+  assert.equal(subject, "A few ideas for the Old Site Bakery website");
+  assert.ok(body.includes("home page of https://oldsite.example/"));
+  assert.ok(body.includes("1. No mobile layout setting"));
+  assert.ok(body.includes("3. No phone link"));
+  assert.ok(!body.includes("Fourth reason"), "at most three findings");
+  assert.ok(body.includes("automated read of your home page on November 5, 2026"));
+  assert.ok(body.includes("It can miss things"), "limits of the check are stated");
+  assert.ok(body.includes("Nothing was copied from your current site"));
+  assert.ok(body.includes("https://x.test/m/abc") && body.includes("pick a time to talk here: https://cal.com/x"));
+  assert.ok(body.includes(UNSUB_TOKEN) && body.includes("reply with the word STOP"));
+  assert.ok(body.includes(brand.mailingAddress));
+  assert.ok(!/[\u2013\u2014]/.test(body), "no dash punctuation");
+  assert.ok(!/\b(abandoned|terrible|awful|broken|outdated)\b/i.test(body), "no insults");
+  assert.ok(!/\[\[/.test(body.replace(brand.mailingAddress, "")));
+  assert.throws(() => buildRedesignDraft({ lead: scoredLead({ audit_status: null, audit_score: null }), brand, mockupLink: "x" }), /no website quality check/);
+  assert.throws(() => buildRedesignDraft({ lead: scoredLead({ bucket: "no_website" }), brand, mockupLink: "x" }), /no website quality check/);
+  const noPhone = buildRedesignDraft({ lead: scoredLead({ phone: "" }), brand, mockupLink: "x" }).body;
+  assert.ok(noPhone.includes("your business name, category, and city,") || noPhone.includes("your business name, category, and city)"));
+  assert.ok(!noPhone.includes("pick a time"), "booking line only when a link is saved");
+});
+
+test("the audit wording is never harsh about a business", async () => {
+  const a = await import("../lib/audit.js");
+  const old = a.analyzeHtml({ html: "<html><body><p>Copyright 2009 Old Shop</p></body></html>", finalUrl: "http://x.example/", ms: 500, bytes: 100 }, { year: 2026 });
+  const fresh = old.checks.find((c) => c.id === "fresh").note;
+  assert.match(fresh, /may look out of date/);
+  assert.ok(!/abandon/i.test(JSON.stringify(old.checks)));
+});
+
+test("redesign drafts: only scored sites below the cutoff without a draft, skipping skipped leads", async () => {
+  const mk = async (name, score, extra = {}) => {
+    const id = await seedAuditLead(name, `https://${name.replace(/\W/g, "").toLowerCase()}.example/`);
+    await store.applyAudit("aquila", id, { status: "ok", score, checks: [], reasons: ["Slow."], psi: null });
+    if (extra.skip) await store.setLeadStatus("aquila", id, "skipped");
+    return id;
+  };
+  const low = await mk("Draftable Low Redesign4", 20);
+  const drafted = await mk("Already Drafted Redesign4", 25);
+  const skipped = await mk("Skipped Lead Redesign4", 22, { skip: true });
+  const high = await mk("High Score Redesign4", 90);
+  await store.saveDraft("aquila", drafted, { subject: "s", body: "b" });
+  const ids = (await store.redesignNeedingDraft("aquila", 60)).map((l) => l.id);
+  assert.ok(ids.includes(low));
+  assert.ok(!ids.includes(drafted) && !ids.includes(skipped) && !ids.includes(high));
+  assert.equal((await store.redesignNeedingDraft("other", 100)).length, 0, "brand isolation");
+  const rows = await store.redesignTargets("aquila", 60);
+  assert.equal(rows.find((l) => l.id === drafted).draft_status, "draft", "the list shows existing draft status");
+  assert.equal(rows.find((l) => l.id === low).draft_status, null);
+  assert.ok(ids.length <= 200 && (await store.redesignNeedingDraft("aquila", 60, 1)).length <= 1, "limit respected");
+});
+
+test("every sentence the audit can produce is safe to put in an email to the business", async () => {
+  const a = await import("../lib/audit.js");
+  const worst = a.analyzeHtml({ html: "<html><center><font>x</font></center><marquee>m</marquee><frameset></frameset><embed type=application/x-shockwave-flash><table></table><table></table><table></table><table></table><img src=a><p>Copyright 2001</p></html>", finalUrl: "http://x.example/", ms: 9000, bytes: 2_000_000 }, { year: 2026 });
+  const text = worst.checks.map((c) => c.note).join(" ");
+  assert.ok(!/\b(abandoned|terrible|awful|broken|outdated|bad|ugly|useless|amateur)\b/i.test(text), text);
+  assert.ok(!/[\u2013\u2014]/.test(text), "no dash punctuation");
 });

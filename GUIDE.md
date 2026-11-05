@@ -42,7 +42,9 @@ To run on a schedule: open the campaign and copy the one-line command it shows i
 3. Press a cutoff button (**Below 50**, **60**, **70** or **80**). The list shows the worst sites first, with what is holding each one back.
 4. Some sites cannot be scored: ones that block robots, do not load, or are built with scripts. National chains, franchise pages, and directory or booking pages are skipped on purpose. Look at the unscored ones by hand.
 5. Treat a score as a starting point, not a verdict. Only the home page is read, so a site that is fine but keeps its details on other pages can score lower than it deserves.
-6. Optional: add a free `PAGESPEED_API_KEY` to `.env.local` (see `.env.example`) and restart to include Google's measured speed and accessibility.
+6. Each row has **Preview concept** (the page the business would see, with what the check found) and **Create draft** (a redesign email for you to review). **Create redesign drafts for every site below N** makes them in bulk. Drafts land in the Review queue, and nothing is sent until you add a recipient email, set your sender details, approve it, and send it yourself.
+7. Before approving, open the business's own site and make sure the findings are true. The check reads the page code and can be wrong.
+8. Optional: add a free `PAGESPEED_API_KEY` to `.env.local` (see `.env.example`) and restart to include Google's measured speed and accessibility.
 
 ## 4. Outreach email (when you are ready to send for real)
 

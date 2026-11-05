@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0 (branch crm-core)
+- Redesign concepts: a scored site gets a concept page (public link, never indexed) that adds a plain "what an automated check noticed" section, dated, with the limits of the check stated. Nothing is copied from their site.
+- Redesign email: a separate template that says what was looked at, lists at most three measured findings, links the concept, and keeps the same unsubscribe, address and review rules. Create drafts one at a time or for every site below a cutoff from Redesign targets. Nothing is sent automatically.
+- Fixed: headings on every concept page were white on a light background (invisible); the audit's wording is now safe to quote to a business owner, with a test.
+
 ## 1.3.0 (branch crm-core)
 - Redesign targets page: a free quality check scores each lead's own website out of 100 (HTTPS, phone layout, page structure, image descriptions, current code, speed, contact links, freshness, search and sharing tags) and lists sites below a cutoff you pick (50, 60, 70 or 80) with plain reasons. Optional free PageSpeed key adds Google's measured scores.
 - Sites that block automated visitors, do not load, or are built entirely with scripts are not scored. National chains, franchise pages and directory or booking listings are skipped.

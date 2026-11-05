@@ -10,10 +10,11 @@ import { startRun } from "@/lib/runner";
 import { startVerification } from "@/lib/verify";
 import { startAudit } from "@/lib/auditrun";
 import { areaCampaignName, validateAreaCampaign } from "@/lib/campaigns";
-import { buildDraft, isValidEmail, sendProblems, sendViaResend } from "@/lib/email";
+import { buildDraft, buildRedesignDraft, isValidEmail, sendProblems, sendViaResend } from "@/lib/email";
 import { mockupUrl } from "@/lib/tokens";
 import { requireUser } from "@/lib/auth";
 import { parseFilters } from "@/lib/leadfilters";
+import { isRedesignLead, parseThreshold } from "@/lib/redesign";
 import { safeNext } from "@/lib/safeNext";
 
 // All inputs are validated here, at the server trust boundary.
@@ -71,7 +72,8 @@ export async function deleteCampaignAction(formData) {
 async function makeDraft(lead) {
   const brand = getBrand(BRAND);
   const bookingLink = (await store.getBookingUrl(BRAND)) || "";
-  const { subject, body } = buildDraft({ lead, brand, mockupLink: mockupUrl(lead.mockup_token), bookingLink });
+  const build = lead.bucket === "has_website" ? buildRedesignDraft : buildDraft;
+  const { subject, body } = build({ lead, brand, mockupLink: mockupUrl(lead.mockup_token), bookingLink });
   await store.saveDraft(BRAND, lead.id, { subject, body });
 }
 
@@ -98,8 +100,9 @@ export async function createDraftAction(formData) {
   await requireUser();
   const leadId = id.parse(formData.get("leadId"));
   const lead = await store.getLead(BRAND, leadId);
-  if (!lead || lead.bucket !== "no_website") done("/leads", "Drafts are only created for no-website leads.", "bad");
-  if (!store.outreachReady(lead)) done(`/leads/${leadId}`, "Check that this business really has no website first (OpenStreetMap data is often incomplete).", "bad");
+  const redesign = isRedesignLead(lead);
+  if (!lead || (lead.bucket !== "no_website" && !redesign)) done("/leads", "Drafts are only created for no-website leads and for websites that have been scored.", "bad");
+  if (!redesign && !store.outreachReady(lead)) done(`/leads/${leadId}`, "Check that this business really has no website first (OpenStreetMap data is often incomplete).", "bad");
   await makeDraft(lead);
   revalidatePath("/", "layout");
   done(`/leads/${leadId}`, "Draft created. Review it below.");
@@ -220,4 +223,14 @@ export async function auditWebsitesAction() {
   after(() => r.done);
   revalidatePath("/", "layout");
   done("/redesign", "Website quality check started. Progress shows below and on the Scanner page under Recent runs.");
+}
+
+/** Create redesign drafts for every scored site below the chosen cutoff that has no draft yet (up to 200). */
+export async function draftRedesignAction(formData) {
+  await requireUser();
+  const below = parseThreshold(formData.get("below"));
+  const leads = await store.redesignNeedingDraft(BRAND, below, 200);
+  for (const lead of leads) await makeDraft(lead);
+  revalidatePath("/", "layout");
+  done("/queue", leads.length ? `Created ${leads.length} redesign draft(s). Review them here before anything is sent.` : "Every site below this cutoff already has a draft.", leads.length ? "ok" : "bad");
 }

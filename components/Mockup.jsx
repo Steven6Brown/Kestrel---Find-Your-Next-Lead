@@ -1,4 +1,5 @@
 import { categoryCopy, telHref, readableOn } from "@/lib/mockupCopy";
+import { longDate } from "@/lib/redesign";
 
 // Phase 2 mockup. Takes `lead` (real retrieved data) and `brand` (who made it).
 // Nothing here names a company or color; the accent color is the brand's flat primary.
@@ -27,7 +28,7 @@ function DraftTag() {
   );
 }
 
-export default function Mockup({ lead, brand, bookingUrl = null }) {
+export default function Mockup({ lead, brand, bookingUrl = null, audit = null }) {
   const accent = HEX.test(brand.primaryColor || "") ? brand.primaryColor : "#0f6b63";
   const dark = HEX.test(brand.darkColor || "") ? brand.darkColor : "#1b1f23";
   const onAccent = readableOn(accent);
@@ -37,7 +38,10 @@ export default function Mockup({ lead, brand, bookingUrl = null }) {
   const category = lead.category_label || "Local business";
 
   return (
-    <div className="min-h-screen bg-[#fbfaf6] text-[#1b1f23]">
+    <div className="concept-page min-h-screen bg-[#fbfaf6] text-[#1b1f23]">
+      {/* The app's dark theme colors every heading white in a global rule that outranks utility classes.
+          This page is light, so its headings are set dark here, scoped to this page only. */}
+      <style>{".concept-page h1, .concept-page h2, .concept-page h3 { color: #1b1f23; }"}</style>
       {/* Concept banner: honest framing, always visible */}
       <div style={{ background: dark, color: "#ffffff", borderBottom: `3px solid ${accent}` }} className="px-4 py-3 text-sm">
         <p className="mx-auto flex max-w-5xl items-start gap-3">
@@ -45,9 +49,9 @@ export default function Mockup({ lead, brand, bookingUrl = null }) {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={brand.logo} alt="" width={28} height={28} className="mt-0.5 h-7 w-7 shrink-0" />
           ) : null}
-          <span><strong style={{ color: accent === "#C08A2E" ? "#E0AC4C" : accent }}>Concept preview.</strong> This is a quick idea of what a website for {lead.name} could look
-          like, made by {brand.name} from public business listing details. It is not an official site and
-          anything marked as a placeholder is not confirmed.</span>
+          <span><strong style={{ color: accent === "#C08A2E" ? "#E0AC4C" : accent }}>Concept preview.</strong> This is a quick idea of what {audit ? "a refreshed website" : "a website"} for {lead.name} could look
+          like, made by {brand.name} from public business listing details{audit ? " and a quick automated read of the current site's home page" : ""}. It is not an official site and
+          anything marked as a placeholder is not confirmed. Nothing was copied from any existing site.</span>
         </p>
       </div>
 
@@ -56,7 +60,7 @@ export default function Mockup({ lead, brand, bookingUrl = null }) {
           <p className="font-[family-name:var(--font-space)] text-xl font-semibold">{lead.name}</p>
           <nav aria-label="Concept sections">
             <ul className="flex flex-wrap gap-1 text-sm font-semibold">
-              {[["About", "#about"], ["Services", "#services"], ["Visit", "#visit"]].map(([t, h]) => (
+              {[...(audit ? [["Findings", "#findings"]] : []), ["About", "#about"], ["Services", "#services"], ["Visit", "#visit"]].map(([t, h]) => (
                 <li key={h}>
                   <a href={h} className="inline-flex min-h-[44px] items-center px-3 underline-offset-4 hover:underline">
                     {t}
@@ -69,6 +73,31 @@ export default function Mockup({ lead, brand, bookingUrl = null }) {
       </header>
 
       <main id="main">
+        {audit ? (
+          <section id="findings" className="border-b-2 border-[#1b1f23] bg-white" aria-labelledby="findings-h">
+            <div className="mx-auto max-w-5xl px-4 py-12">
+              <h2 id="findings-h" className="font-[family-name:var(--font-space)] text-3xl font-semibold">
+                What an automated check noticed
+              </h2>
+              <p className="mt-2 max-w-2xl text-[#2d343b]">
+                A computer program read the home page of{" "}
+                {audit.website ? <a href={audit.website} rel="noopener noreferrer" className="break-all underline underline-offset-4">{audit.website}</a> : "the current site"}
+                {audit.checkedAt ? ` on ${longDate(audit.checkedAt)}` : ""}. It looks at the page code only, so it can miss things and it is not a full review.
+              </p>
+              {audit.reasons.length ? (
+                <ol className="mt-6 divide-y-2 divide-[#1b1f23] border-y-2 border-[#1b1f23]">
+                  {audit.reasons.slice(0, 5).map((r, i) => (
+                    <li key={r} className="flex items-baseline gap-5 py-4">
+                      <span className="font-[family-name:var(--font-space)] text-2xl font-semibold" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
+                      <span className="text-lg">{r}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+              <p className="mt-4 text-sm text-[#2d343b]">Quick check result: {audit.score} out of 100. This is our own simple measure, not an industry standard.</p>
+            </div>
+          </section>
+        ) : null}
         <section className="mx-auto grid max-w-5xl gap-8 px-4 py-12 md:grid-cols-2 md:items-center md:py-16" aria-labelledby="hero-h">
           <div>
             <p className="text-sm font-bold uppercase tracking-wide text-[#2d343b]">

@@ -5,7 +5,7 @@ import AutoRefresh from "@/components/AutoRefresh";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
 import { auditCounts, countRedesignTargets, countUnaudited, redesignTargets, runningAudit } from "@/lib/store";
 import { THRESHOLDS, parseThreshold } from "@/lib/redesign";
-import { auditWebsitesAction } from "../actions";
+import { auditWebsitesAction, createDraftAction, draftRedesignAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Redesign targets" };
@@ -79,10 +79,10 @@ export default async function Redesign({ searchParams }) {
           </p>
         ) : (
           <div className="card mt-4 overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left">
+            <table className="w-full min-w-[900px] text-left">
               <caption className="sr-only">Websites scoring below {below} out of 100</caption>
               <thead className="border-b border-line">
-                <tr>{["Business", "Score", "Website", "What is holding it back"].map((h) => <th key={h} scope="col" className="p-3 eyebrow !text-muted">{h}</th>)}</tr>
+                <tr>{["Business", "Score", "Website", "What is holding it back", "Outreach"].map((h) => <th key={h} scope="col" className="p-3 eyebrow !text-muted">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {rows.map((l) => (
@@ -98,11 +98,31 @@ export default async function Redesign({ searchParams }) {
                         {reasonsOf(l).slice(0, 4).map((r) => <li key={r}>{r}</li>)}
                       </ul>
                     </td>
+                    <td className="p-3">
+                      <div className="flex flex-col items-start gap-2">
+                        <a className="btn" href={`/m/${l.mockup_token}`} target="_blank" rel="noopener noreferrer">Preview concept</a>
+                        {l.draft_status ? (
+                          <Link className="btn" href={`/leads/${l.id}`}>Draft {l.draft_status}</Link>
+                        ) : (
+                          <form action={createDraftAction}>
+                            <input type="hidden" name="leadId" value={l.id} />
+                            <button type="submit" className="btn btn-primary">Create draft</button>
+                          </form>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+        {rows.length > 0 && (
+          <form action={draftRedesignAction} className="mt-4">
+            <input type="hidden" name="below" value={below} />
+            <button type="submit" className="btn btn-primary">Create redesign drafts for every site below {below}</button>
+            <p className="mt-2 text-sm text-muted">Up to 200 at a time, skipping any that already have a draft. Drafts go to the Review queue. Nothing is sent, and each one still needs a recipient email and your approval.</p>
+          </form>
         )}
         {pages > 1 && (
           <nav aria-label="Pages" className="mt-4 flex flex-wrap items-center gap-2">

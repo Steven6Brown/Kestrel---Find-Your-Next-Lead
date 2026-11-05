@@ -16,7 +16,7 @@ export async function GET(request) {
     lines.push([
       l.name, l.category_label, l.city, l.region, l.phone, l.website, l.website_kind, l.address, l.maps_url, l.status,
       l.place_id?.startsWith("osm:") ? l.site_check : "google listing",
-      l.bucket === "no_website" ? mockupUrl(l.mockup_token) : "",
+      l.bucket === "no_website" || (l.bucket === "has_website" && l.audit_status === "ok") ? mockupUrl(l.mockup_token) : "",
     ].map(csvCell).join(","));
   }
   return new NextResponse(lines.join("\r\n") + "\r\n", {

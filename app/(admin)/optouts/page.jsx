@@ -8,7 +8,7 @@ export const metadata = { title: "Opt-outs" };
 
 export default async function OptOuts({ searchParams }) {
   const sp = await searchParams;
-  const rows = listSuppressions(DEFAULT_BRAND_ID);
+  const rows = await listSuppressions(DEFAULT_BRAND_ID);
   return (
     <div className="reveal">
       <h1 className="text-4xl font-extrabold">Opt-outs</h1>

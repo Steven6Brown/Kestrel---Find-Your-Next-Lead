@@ -42,24 +42,24 @@ export async function discoverAction(formData) {
   done("/", msg, errors.length && !searches ? "bad" : "ok");
 }
 
-function makeDraft(lead) {
+async function makeDraft(lead) {
   const brand = getBrand(BRAND);
   const { subject, body } = buildDraft({ lead, brand, mockupLink: mockupUrl(lead.mockup_token) });
-  store.saveDraft(BRAND, lead.id, { subject, body });
+  await store.saveDraft(BRAND, lead.id, { subject, body });
 }
 
 export async function draftAllAction() {
-  const leads = store.leadsNeedingDraft(BRAND);
-  for (const lead of leads) makeDraft(lead);
+  const leads = await store.leadsNeedingDraft(BRAND);
+  for (const lead of leads) await makeDraft(lead);
   revalidatePath("/", "layout");
   done("/queue", leads.length ? `Created ${leads.length} draft(s) for review.` : "Every no-website lead already has a draft.");
 }
 
 export async function createDraftAction(formData) {
   const leadId = id.parse(formData.get("leadId"));
-  const lead = store.getLead(BRAND, leadId);
+  const lead = await store.getLead(BRAND, leadId);
   if (!lead || lead.bucket !== "no_website") done("/leads", "Drafts are only created for no-website leads.", "bad");
-  makeDraft(lead);
+  await makeDraft(lead);
   revalidatePath("/", "layout");
   done(`/leads/${leadId}`, "Draft created. Review it below.");
 }
@@ -76,11 +76,11 @@ export async function saveContactAction(formData) {
   const leadId = Number(formData.get("leadId"));
   if (!p.success) done(`/leads/${leadId}`, "Enter a valid email address (or leave it blank).", "bad");
   const { contact_email, notes, status } = p.data;
-  if (contact_email && store.isSuppressed(BRAND, contact_email)) {
-    store.updateLeadContact(BRAND, p.data.leadId, { contact_email, notes, status: "do_not_contact" });
+  if (contact_email && (await store.isSuppressed(BRAND, contact_email))) {
+    await store.updateLeadContact(BRAND, p.data.leadId, { contact_email, notes, status: "do_not_contact" });
     done(`/leads/${leadId}`, "That address has opted out. The lead was marked do not contact.", "bad");
   }
-  store.updateLeadContact(BRAND, p.data.leadId, { contact_email, notes, status });
+  await store.updateLeadContact(BRAND, p.data.leadId, { contact_email, notes, status });
   revalidatePath("/", "layout");
   done(`/leads/${leadId}`, "Saved.");
 }
@@ -96,7 +96,7 @@ export async function saveDraftAction(formData) {
   const p = draftSchema.safeParse(Object.fromEntries(formData));
   if (!p.success) done(`/leads/${leadId}`, "Subject (3+ characters) and body (20+ characters) are required.", "bad");
   try {
-    store.saveDraft(BRAND, p.data.leadId, { subject: p.data.subject, body: p.data.body });
+    await store.saveDraft(BRAND, p.data.leadId, { subject: p.data.subject, body: p.data.body });
   } catch (err) {
     done(`/leads/${leadId}`, err.message, "bad");
   }
@@ -107,7 +107,7 @@ export async function saveDraftAction(formData) {
 export async function draftStatusAction(formData) {
   const leadId = id.parse(formData.get("leadId"));
   const status = z.enum(["approved", "rejected", "draft"]).parse(formData.get("status"));
-  store.setDraftStatus(BRAND, leadId, status);
+  await store.setDraftStatus(BRAND, leadId, status);
   revalidatePath("/", "layout");
   done(`/leads/${leadId}`, status === "approved" ? "Approved. You can now send it manually." : "Draft updated.");
 }
@@ -118,18 +118,18 @@ export async function sendAction(formData) {
   if (formData.get("reviewed") !== "on") done(back, "Tick the box to confirm you reviewed this exact email.", "bad");
   if (inFlight.has(leadId)) done(back, "A send for this lead is already in progress.", "bad");
   const brand = getBrand(BRAND);
-  const lead = store.getLead(BRAND, leadId);
-  const draft = lead && store.getDraftByLead(BRAND, leadId);
-  const problems = lead ? sendProblems({ lead, draft, brand, sentToday: store.countSentToday(BRAND) }) : ["Lead not found."];
+  const lead = await store.getLead(BRAND, leadId);
+  const draft = lead && (await store.getDraftByLead(BRAND, leadId));
+  const problems = lead ? await sendProblems({ lead, draft, brand, sentToday: await store.countSentToday(BRAND) }) : ["Lead not found."];
   if (problems.length) done(back, `Not sent: ${problems.join(" ")}`, "bad");
   inFlight.add(leadId);
   let error = null;
   try {
     const r = await sendViaResend({ brand, to: lead.contact_email, subject: draft.subject, body: draft.body });
-    store.markDraftSent(BRAND, leadId, { to: lead.contact_email, resendId: r.id });
+    await store.markDraftSent(BRAND, leadId, { to: lead.contact_email, resendId: r.id });
   } catch (err) {
     error = err.message;
-    store.markDraftSendError(BRAND, leadId, error);
+    await store.markDraftSendError(BRAND, leadId, error);
   } finally {
     inFlight.delete(leadId);
   }
@@ -140,7 +140,7 @@ export async function sendAction(formData) {
 export async function addSuppressionAction(formData) {
   const email = String(formData.get("email") || "").trim();
   if (!isValidEmail(email)) done("/optouts", "Enter a valid email address.", "bad");
-  store.addSuppression(BRAND, email, "manual (reply or request)");
+  await store.addSuppression(BRAND, email, "manual (reply or request)");
   revalidatePath("/", "layout");
   done("/optouts", "Added. This address will never be emailed again.");
 }

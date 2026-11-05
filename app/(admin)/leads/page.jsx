@@ -15,7 +15,7 @@ export default async function Leads({ searchParams }) {
   const sp = await searchParams;
   const bucket = sp.bucket === "has_website" ? "has_website" : "no_website";
   const q = typeof sp.q === "string" ? sp.q.slice(0, 80) : "";
-  const leads = listLeads(DEFAULT_BRAND_ID, { bucket, q });
+  const leads = await listLeads(DEFAULT_BRAND_ID, { bucket, q });
 
   return (
     <div className="reveal">

@@ -24,7 +24,7 @@ export async function POST(request) {
   if (!listBrandIds().includes(b) || !verifyUnsubscribe(b, e, s)) {
     return new NextResponse("This opt-out link is not valid.", { status: 400 });
   }
-  addSuppression(b, e, "unsubscribe link");
+  await addSuppression(b, e, "unsubscribe link");
   const wantsHtml = (request.headers.get("accept") || "").includes("text/html");
   if (wantsHtml) return NextResponse.redirect(new URL("/unsubscribe/done", request.url), 303);
   return new NextResponse("You have been unsubscribed.", { status: 200 });

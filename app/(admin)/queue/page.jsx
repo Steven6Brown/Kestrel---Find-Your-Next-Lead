@@ -11,7 +11,7 @@ const FILTERS = [["draft", "Awaiting review"], ["approved", "Approved"], ["rejec
 export default async function Queue({ searchParams }) {
   const sp = await searchParams;
   const status = FILTERS.some(([k]) => k === sp.status) ? sp.status : "draft";
-  const drafts = listDrafts(DEFAULT_BRAND_ID, status);
+  const drafts = await listDrafts(DEFAULT_BRAND_ID, status);
   return (
     <div className="reveal">
       <h1 className="text-4xl font-extrabold">Review queue</h1>

@@ -12,7 +12,7 @@ cp .env.example .env.local   # then fill in values
 npm run dev
 ```
 
-Requires Node 22.5+ (uses the built-in `node:sqlite`). Open http://localhost:3000. If `ADMIN_PASSWORD` is set the dashboard asks for HTTP Basic Auth (user `ADMIN_USER`, default `admin`). In production the app refuses to serve the dashboard until `ADMIN_PASSWORD` is set.
+Requires Node 20+. With no `DATABASE_URL`, local dev uses an embedded Postgres (PGlite) stored in `./data/pglite`; production needs `DATABASE_URL`. Open http://localhost:3000. If `ADMIN_PASSWORD` is set the dashboard asks for HTTP Basic Auth (user `ADMIN_USER`, default `admin`). In production the app refuses to serve the dashboard until `ADMIN_PASSWORD` is set.
 
 Commands: `npm test` (unit tests), `npm run lint`, `npm run build`.
 
@@ -24,6 +24,7 @@ Commands: `npm test` (unit tests), `npm run lint`, `npm run build`.
 | Resend API key (sender domain must be verified in Resend) | `RESEND_API_KEY` |
 | Sender name and email, reply-to | `SENDER_NAME`, `SENDER_EMAIL`, `REPLY_TO_EMAIL` |
 | Real physical mailing address (CAN-SPAM) | `MAILING_ADDRESS` |
+| Postgres connection string (production) | `DATABASE_URL` |
 | Public https URL of the deployed app | `APP_BASE_URL` |
 | Random secret for signed opt-out links | `APP_SECRET` |
 
@@ -45,8 +46,12 @@ Opt-outs: link clicks are recorded instantly. For replies saying STOP, add the a
 
 Brand data lives in `config/brands.js` and is passed as a `brand` object to the mockup and email code. Every table row is scoped by `brand_id`. Adding a brand means adding a config entry; no core logic changes. Not built for v1: per-brand logins, billing, or a brand picker in the UI (the dashboard uses the default brand).
 
-## Deploying to Vercel (important)
+## Deploying to Vercel
 
-SQLite is a local file, which Vercel's serverless filesystem will not keep. Run it locally for Phase 1 and 2 testing, or before deploying swap `lib/db.js` and `lib/store.js` for Neon / Vercel Postgres (all data access is in those two files). Mockup and opt-out links must be publicly reachable, so the app has to be hosted somewhere before real email goes out.
+1. Create a Neon (or Vercel Postgres) database and copy the pooled connection string.
+2. `vercel link`, then add every variable from `.env.example` in the Vercel project settings (`DATABASE_URL`, `APP_BASE_URL` set to the production https URL, `ADMIN_PASSWORD`, `APP_SECRET`, and so on).
+3. Deploy. Tables are created automatically on first use (`CREATE TABLE IF NOT EXISTS`).
+
+Mockup and opt-out links must be publicly reachable, so the app has to be hosted before real email goes out. Note that the in-memory rate limiter and send lock are per serverless instance.
 
 Docs: [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md), [TESTING.md](TESTING.md), [CHANGELOG.md](CHANGELOG.md).

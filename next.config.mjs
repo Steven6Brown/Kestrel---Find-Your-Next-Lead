@@ -18,6 +18,7 @@ const csp = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  serverExternalPackages: ["pg", "@electric-sql/pglite"],
   reactStrictMode: true,
   async headers() {
     return [

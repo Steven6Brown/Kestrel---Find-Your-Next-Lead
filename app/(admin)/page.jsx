@@ -11,8 +11,8 @@ export const metadata = { title: "Dashboard" };
 
 export default async function Dashboard({ searchParams }) {
   const sp = await searchParams;
-  const s = stats(DEFAULT_BRAND_ID);
-  const searches = listSearches(DEFAULT_BRAND_ID);
+  const s = await stats(DEFAULT_BRAND_ID);
+  const searches = await listSearches(DEFAULT_BRAND_ID);
   const brand = getBrand(DEFAULT_BRAND_ID);
   const setup = [
     ...(process.env.GOOGLE_PLACES_API_KEY ? [] : ["GOOGLE_PLACES_API_KEY is not set, so discovery cannot run."]),

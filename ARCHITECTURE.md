@@ -6,7 +6,7 @@
 
 **Assumptions (low risk, reversible):**
 - Product name: **SiteScout** (`config/product.js`). The brief asked to pick one.
-- SQLite via built-in `node:sqlite` for v1 (brief allows it). Postgres is the production path.
+- Postgres (Neon or Vercel Postgres) in production via `pg`. Local dev and tests use embedded PGlite (real Postgres in WASM, dev dependency) when `DATABASE_URL` is unset. All SQL is plain Postgres.
 - Dashboard protected by HTTP Basic Auth (`proxy.js`) rather than a login system.
 - Social profiles and link-in-bio pages count as "no website".
 - Mockup accent color is a neutral teal placeholder, not a confirmed brand color.
@@ -22,7 +22,7 @@
 - `lib/places.js`, `lib/discovery.js`, `lib/sites.js` Phase 1.
 - `components/Mockup.jsx`, `lib/mockupCopy.js`, `app/m/[token]` Phase 2.
 - `lib/email.js`, `lib/tokens.js`, `app/(admin)/actions.js` Phase 3.
-- `lib/store.js`, `lib/db.js` the only data access. Swap these for Postgres.
+- `lib/store.js`, `lib/db.js` the only data access (async, Postgres).
 - `proxy.js` auth. Public paths: `/m/*`, `/unsubscribe*`, `/api/unsubscribe`, legal pages.
 
 ## Decisions

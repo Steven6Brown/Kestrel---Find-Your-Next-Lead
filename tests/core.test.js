@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-process.env.DATABASE_FILE = ":memory:";
+process.env.PGLITE_DIR = "memory";
+delete process.env.DATABASE_URL;
 process.env.APP_SECRET = "test-secret-test-secret-123";
 process.env.APP_BASE_URL = "https://concepts.example.test";
 process.env.SENDER_NAME = "Test Sender";
@@ -59,14 +60,14 @@ test("discovery dedupes on place id and splits buckets", async () => {
   const b = await runDiscovery({ brandId: "aquila", locations: ["Springfield, IL"], categories: ["plumber"], search, apiKey: "k" });
   assert.equal(a.created, 2);
   assert.equal(b.created, 0);
-  assert.equal(store.listLeads("aquila", { bucket: "no_website" }).length, 1);
-  assert.equal(store.listLeads("aquila", { bucket: "has_website" }).length, 1);
+  assert.equal((await store.listLeads("aquila", { bucket: "no_website" })).length, 1);
+  assert.equal((await store.listLeads("aquila", { bucket: "has_website" })).length, 1);
 });
 
-test("leads are isolated per brand", () => {
-  store.upsertPlace("other", normalizePlace(raw("dup1", "Other Brand Copy")));
-  assert.equal(store.listLeads("other").length, 1);
-  assert.equal(store.listLeads("aquila").length, 2);
+test("leads are isolated per brand", async () => {
+  await store.upsertPlace("other", normalizePlace(raw("dup1", "Other Brand Copy")));
+  assert.equal((await store.listLeads("other")).length, 1);
+  assert.equal((await store.listLeads("aquila")).length, 2);
 });
 
 test("discovery enforces the combo cap", async () => {
@@ -74,26 +75,27 @@ test("discovery enforces the combo cap", async () => {
   await assert.rejects(runDiscovery({ brandId: "aquila", locations: ["a b", "c d"], categories: many, search: async () => [], apiKey: "k" }));
 });
 
-test("email guardrails block unsafe sends and allow a complete one", () => {
+test("email guardrails block unsafe sends and allow a complete one", async () => {
   const brand = getBrand("aquila");
-  const lead = store.listLeads("aquila", { bucket: "no_website" })[0];
+  const lead = (await store.listLeads("aquila", { bucket: "no_website" }))[0];
   const { subject, body } = buildDraft({ lead, brand, mockupLink: mockupUrl(lead.mockup_token) });
   assert.ok(!/[–—]/.test(body), "no dash punctuation");
   assert.ok(body.includes(brand.mailingAddress));
-  store.saveDraft("aquila", lead.id, { subject, body });
-  let draft = store.getDraftByLead("aquila", lead.id);
-  assert.ok(sendProblems({ lead, draft, brand, sentToday: 0 }).some((p) => /approved/.test(p)));
-  store.setDraftStatus("aquila", lead.id, "approved");
-  draft = store.getDraftByLead("aquila", lead.id);
-  assert.ok(sendProblems({ lead, draft, brand, sentToday: 0 }).some((p) => /recipient/.test(p)));
-  store.updateLeadContact("aquila", lead.id, { contact_email: "owner@example.test", notes: "", status: "new" });
-  const ready = store.getLead("aquila", lead.id);
-  assert.deepEqual(sendProblems({ lead: ready, draft, brand, sentToday: 0 }), []);
-  assert.ok(sendProblems({ lead: ready, draft, brand, sentToday: 10 }).some((p) => /cap/.test(p)));
-  store.addSuppression("aquila", "owner@example.test");
-  const after = store.getLead("aquila", lead.id);
+  await store.saveDraft("aquila", lead.id, { subject, body });
+  let draft = await store.getDraftByLead("aquila", lead.id);
+  assert.ok((await sendProblems({ lead, draft, brand, sentToday: 0 })).some((p) => /approved/.test(p)));
+  await store.setDraftStatus("aquila", lead.id, "approved");
+  draft = await store.getDraftByLead("aquila", lead.id);
+  assert.ok((await sendProblems({ lead, draft, brand, sentToday: 0 })).some((p) => /recipient/.test(p)));
+  await store.updateLeadContact("aquila", lead.id, { contact_email: "owner@example.test", notes: "", status: "new" });
+  const ready = await store.getLead("aquila", lead.id);
+  assert.deepEqual(await sendProblems({ lead: ready, draft, brand, sentToday: 0 }), []);
+  assert.ok((await sendProblems({ lead: ready, draft, brand, sentToday: 10 })).some((p) => /cap/.test(p)));
+  await store.addSuppression("aquila", "owner@example.test");
+  const after = await store.getLead("aquila", lead.id);
   assert.equal(after.status, "do_not_contact");
-  assert.ok(sendProblems({ lead: after, draft: store.getDraftByLead("aquila", lead.id), brand, sentToday: 0 }).length > 0);
+  assert.ok((await sendProblems({ lead: after, draft: await store.getDraftByLead("aquila", lead.id), brand, sentToday: 0 })).length > 0);
+  assert.equal((await store.stats("aquila")).optOuts, 1);
 });
 
 test("unsubscribe tokens are bound to the address", () => {

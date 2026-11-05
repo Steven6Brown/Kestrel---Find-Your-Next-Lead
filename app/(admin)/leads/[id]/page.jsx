@@ -15,12 +15,12 @@ export const metadata = { title: "Lead" };
 export default async function LeadPage({ params, searchParams }) {
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const leadId = Number(id);
-  const lead = Number.isInteger(leadId) ? getLead(DEFAULT_BRAND_ID, leadId) : null;
+  const lead = Number.isInteger(leadId) ? await getLead(DEFAULT_BRAND_ID, leadId) : null;
   if (!lead) notFound();
   const brand = getBrand(DEFAULT_BRAND_ID);
-  const draft = getDraftByLead(DEFAULT_BRAND_ID, leadId);
+  const draft = await getDraftByLead(DEFAULT_BRAND_ID, leadId);
   const isNoSite = lead.bucket === "no_website";
-  const problems = draft ? sendProblems({ lead, draft, brand, sentToday: countSentToday(DEFAULT_BRAND_ID) }) : [];
+  const problems = draft ? await sendProblems({ lead, draft, brand, sentToday: await countSentToday(DEFAULT_BRAND_ID) }) : [];
   const preview = draft ? resolveBody(draft.body, { brand, email: lead.contact_email }) : "";
 
   return (

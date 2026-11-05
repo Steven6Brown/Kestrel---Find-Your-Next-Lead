@@ -135,3 +135,14 @@ Do these in order. Each should work.
 - Missing old scan results: stop Kestrel, then `node scripts/recover-legacy-data.mjs` (a dry run) and `node scripts/recover-legacy-data.mjs --yes`.
 - Locked out: **Forgot your password?** With no email set up, the reset link is written to `outbox.log` in `%LOCALAPPDATA%\Kestrel`.
 - Your data lives in `%LOCALAPPDATA%\Kestrel` (not in the project folder, because OneDrive can damage databases).
+
+
+## Social posts: promote each of your apps
+**Menu: Reach out, Social posts.** Nothing is ever posted until you approve it.
+1. **Add an app.** Social, Apps and accounts, fill in the name, a true one line description, colors, a never say list and hashtags. Do this once per mobile app.
+2. **Connect its accounts (needed only for automatic posting).** Open the app, then for Facebook, Instagram and LinkedIn paste the account id and access token you got from that platform's developer site. They are encrypted and never shown again. Press Test. TikTok needs nothing.
+3. **Make a post.** New post, pick a format, fill the blanks, Make drafts. Or Import drafts: copy the request shown there into an AI chat, paste the JSON answer back. You will see a draft and a graphic per platform.
+4. **Review and approve.** Read "Exactly what will be posted", fix anything, tick the three checks, press Approve.
+5. **Schedule or post now.** Pick a time, or Post now. TikTok: copy the text, upload your video in TikTok, press Mark as posted.
+6. **Scheduled posts need the scheduler.** See ARCHITECTURE.md (Social module). Instagram and Facebook posting also needs Kestrel on a public https address.
+7. **See results.** The Social page shows clicks on tracked links; on a post, press "Count an inquiry" when someone contacts you because of it.

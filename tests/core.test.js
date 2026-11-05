@@ -1891,7 +1891,7 @@ test("the menu follows the order of the work and highlights the right page", asy
   const nav = await import("../lib/nav.js");
   const all = nav.NAV_GROUPS.flatMap((g) => g.items);
   assert.deepEqual(nav.NAV_GROUPS.map((g) => g.key), ["home", "find", "reach", "follow", "deliver", "settings"], "find, reach out, follow up, deliver");
-  assert.ok(all.length <= 9, "a short menu, not thirteen links");
+  assert.ok(all.length <= 10, "a short menu, not thirteen links");
   assert.equal(new Set(all.map((i) => i.href)).size, all.length, "no page appears twice");
   const active = (p) => all.filter((i) => nav.isActive(i, p)).map((i) => i.label);
   assert.deepEqual(active("/"), ["Scan areas"], "the root only matches itself");
@@ -2176,7 +2176,7 @@ test("the menu has Insights right under Today", async () => {
   const all = nav.NAV_GROUPS.flatMap((g) => g.items);
   assert.deepEqual(all.filter((i) => nav.isActive(i, "/insights")).map((i) => i.label), ["Insights"]);
   assert.deepEqual(all.filter((i) => nav.isActive(i, "/insights/anything")).map((i) => i.label), ["Insights"]);
-  assert.ok(all.length <= 9);
+  assert.ok(all.length <= 10);
 });
 
 test("drafts remember which template made them, and old drafts are filled in by lead type", async () => {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.0 (branch crm-core): Social module
+- New Social section (menu: Reach out, Social posts). One entry per app, each with its own brand kit (colors, tone, never say list, calls to action, hashtags, allowed link websites) and its own Facebook Page, Instagram, LinkedIn (personal profile) accounts. TikTok is assisted posting only.
+- Make a post from a fill in the blank format (app promo, new version, tip, seminar, project showcase, question and answer), write your own, or paste drafts made by the AI in a chat (Import drafts shows a ready made request). No paid AI is called anywhere.
+- Every post gets one draft per platform plus a template graphic at that platform's size. Each draft shows exactly what will be posted, with length, hashtag, image and never say checks. Approval needs a three item checklist and records who and when. Editing after approval undoes it.
+- Scheduling and publishing: a scheduled approved post goes out via the cron endpoint `/api/cron/social` (or Post now). The publisher re-checks everything, honors a per account daily cap, never posts twice, and marks failures with a Retry.
+- Tracked short links (`/l/code`): totals of clicks, plus a button to count an inquiry. Public images for Instagram and Facebook are served only through signed, expiring links (`/sm/token`).
+- New dependency declared: sharp (already installed through Next.js) renders graphics and strips image metadata.
+- Menu cap raised from 9 to 10 items.
 ## 2.2.0 (branch crm-core)
 - Backups (Settings, Backups): one click saves a full, checked copy of the database. Optional encryption with BACKUP_PASSPHRASE, an optional BACKUP_DIR (another drive or synced folder), newest 30 kept, a Check button, downloads, a nightly Windows task (scripts/register-backup-task.ps1), and a Needs attention reminder after 7 days without one. scripts/restore-backup.mjs restores into a new empty folder and never overwrites.
 - Contact export and delete (contact page, owners and admins): export everything held about a contact as a JSON file, or delete them after a confirmation. The email stays on the do not contact list, a later scan cannot add the business back, clients with projects are protected, and everything is logged.

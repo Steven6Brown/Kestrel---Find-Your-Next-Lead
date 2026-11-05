@@ -22,3 +22,14 @@ Processors: Google (Places), Resend (delivery), hosting provider. No analytics, 
 **Requests from a person.** On a contact's page, owners and admins can **Export this contact's data** (a JSON file of everything held about them) and **Delete this contact**. Deleting removes the contact with its drafts, timeline, follow-ups and meetings, and the concept page stops working. Kept on purpose: their email address on the do not contact list only, the public listing id of the business (so a scan does not add it back), and an audit log line with the date and who deleted it, never their details. A contact who is a client with projects or invoices cannot be deleted, because those are financial records you may need to keep; export their data instead. Every export and deletion is logged.
 
 **Backups.** Backup files hold a full copy of the database (including password hashes and, for local use, the app secret that two factor sign in depends on), so treat them as sensitive: set BACKUP_PASSPHRASE to encrypt them before copying them anywhere. Kestrel keeps the newest 30 backups, so a deleted contact remains in older backups until newer ones replace them. There are no automatic retention rules for old leads yet.
+
+
+## Social module
+| Data | Source | Why | Where | Retention |
+|---|---|---|---|---|
+| App brand kit: name, description, colors, tone, never say list, hashtags, allowed link sites | Typed by you | Keep each app's posts on brand | `social_apps` | Until you delete or archive the app |
+| Account ids and encrypted access tokens for Facebook, Instagram, LinkedIn | Pasted by you from the platform | Post for you after you approve | `social_accounts` (token encrypted) | Until you press Disconnect, which erases the token |
+| Post text, hashtags, scripts, schedule, approval (who and when), result and link | Templates, typed by you, or pasted from an AI chat you ran yourself | Plan, approve and track posts | `social_posts`, `social_variants` | Until you delete the post |
+| Graphics and uploaded images | Made by Kestrel, or uploaded by you (metadata stripped) | Attach to posts | `social_assets` | Kept with the app; not removed when a post is deleted (known gap) |
+| Short link clicks and inquiries | Visits to your tracked links; inquiries you count | See which posts bring people in | `short_links`, totals only | Until the app is deleted. No address, browser or visitor identity is stored. |
+Sent to platforms: post text and images you approved, to the platform you chose. Nothing from your contacts or CRM is used. No data is sent to any AI service by Kestrel. Do not paste client or contact details into a chat when asking the AI for drafts.

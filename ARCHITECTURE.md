@@ -78,3 +78,26 @@ A lead qualifies (`isRedesignLead` in `lib/redesign.js`) when its own website ha
 
 ## Website verification (free)
 OpenStreetMap often lacks website tags, so a scanned business can look website-less when it is not. `lib/verify.js` groups unverified OSM leads by search area, geocodes the area for a bounding box, and reads Overture Maps places in that box (`lib/overture.js`, DuckDB reading public parquet files, no key or billing). `lib/matchsites.js` holds the pure matching rules (phone plus similar name or nearby; very similar name and nearby; very similar name in the same city when coordinates are missing). A found website sets bucket has_website with website_source overture; a social page stays no_website with kind social; nothing found only stamps overture_checked_at (rechecked after 30 days). People's confirmed verdicts and already-checked leads are never changed, and rescans do not erase a found website. Runs are recorded in `runs` with trigger verify.
+
+
+## Social module (organic posts for each app)
+
+**Status:** built and tested against stand-ins only. No live Facebook, Instagram or LinkedIn call has been made (see TESTING.md).
+
+**Confirmed (owner):** organic posts only, no paid ads; Facebook, Instagram, LinkedIn, TikTok; built inside Kestrel; human approval before anything posts; zero recurring cost, so no paid AI (drafts come from templates or from text the owner pastes from an AI chat); each mobile app has its own accounts; LinkedIn personal profile first; TikTok assisted.
+
+**Decisions and assumptions (change if wrong):**
+- **Inside Kestrel, not separate software.** It reuses sign-in, roles, audit log, encryption, the cron secret pattern and the approval habit. Separate software would duplicate all of that and need its own hosting.
+- **One `social_apps` row per mobile app** (brand kit and accounts). `brand_id` stays the Kestrel tenant (Aquila Digital) on every table, because users and sign-in are scoped by it. Making each app its own `brand_id` would break sign-in.
+- **`social_accounts` instead of the shared `connections` table**, because `connections` is unique per (brand, provider) and each app needs its own account per platform.
+- **Accounts connect by pasting an id and a token** (encrypted at rest), not OAuth. OAuth needs a public https redirect and an approved developer app per platform. Pasting needs neither, and is the smaller attack surface. OAuth with a state parameter is the upgrade path once hosted.
+- **Approval is per platform variant** (`social_variants.status`), not per post, so one platform can fail or be rejected without blocking the others.
+- **Images live in Postgres** (`social_assets`, at most 5 MB, re-encoded so EXIF and GPS are gone) to avoid a paid storage service. Video upload is not built; the owner uploads TikTok video by hand.
+- **Graphics are SVG cards rendered by sharp.** Fonts are Arial/Helvetica fallbacks from the host machine; check the look on any new host.
+- **Scheduling needs something running.** Locally, Windows Task Scheduler must call `POST /api/cron/social` with `Authorization: Bearer CRON_SECRET` every 5 to 15 minutes, and Kestrel must be running. Times are entered in the server's time zone (a hosted server is usually UTC).
+- Instagram and Facebook fetch images from a public https URL, so publishing those needs Kestrel hosted with `APP_BASE_URL` set. LinkedIn uploads the image bytes directly.
+- API versions come from `META_GRAPH_VERSION` and `LINKEDIN_API_VERSION` (defaults are guesses and must be checked).
+
+**Files:** `lib/social/` (platforms rules, zod schemas, templates, graphics, links and signed media, adapters, service with the approval gate and publisher), `lib/socialstore.js` (all SQL, brand scoped), `app/(admin)/social/` (pages and server actions), public `app/l/[code]` and `app/sm/[token]`, `app/api/cron/social`.
+
+**Not built:** OAuth, video upload and direct video posting, TikTok direct posting, LinkedIn company pages, an inbound website form that sets lead source automatically (inquiries are counted by hand for now), AI generation provider (the interface point is the Import page).

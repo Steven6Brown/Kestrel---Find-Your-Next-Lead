@@ -75,3 +75,18 @@
 - Local use writes reset and invite emails to `data/outbox.log` when email is not configured. Treat that file as sensitive; it is never used on Vercel.
 - On plain http the session cookie is not `Secure`. Use https when hosted.
 - Not independently penetration tested.
+
+
+## Social module
+| Control | How it works |
+|---|---|
+| Approval gate | A variant can only be scheduled if it is `approved` with an approver and time on record. The publisher re-checks that, the platform rules and the never say list right before posting. Editing text or the image undoes approval. |
+| Roles | Anyone signed in can draft. Approving, scheduling, posting, rejecting and connecting accounts are owner or admin only. |
+| Tokens | Pasted tokens are encrypted (AES-256-GCM) in `social_accounts.secret_enc`, never returned by any list or get, never logged, never in the audit log, and erased on Disconnect. Errors from platforms are stripped of token text. Disconnect does not revoke at the platform: remove the app's access in each platform's own settings too. |
+| Imported drafts | Treated as untrusted: parsed with zod, control characters stripped, size and count limits, landed as drafts only. |
+| Short links `/l/code` | Public. The code only looks up a destination saved when the post was made, and that destination was checked (https only, no credentials in the address, host on the app's allowlist), so it is not an open redirect. Rate limited. Counts a total only. |
+| Signed images `/sm/token` | Public but needs an HMAC signed, expiring token made at publish time. Rate limited. |
+| Cron `/api/cron/social` | Needs the CRON_SECRET bearer token (constant time compare), rate limited. A post is claimed atomically before sending, so a double fired cron cannot post twice. A post stuck "publishing" for 15 minutes is marked failed, not retried, because it may be live. |
+| Uploads | Allowed JPEG, PNG, WebP up to 5 MB, decoded for real, re-encoded (drops EXIF and GPS), pixel limit applied. |
+| Tenant scoping | Every query filters on `brand_id`; tests check that another brand cannot read apps, accounts, tokens or posts. |
+| Known limits | Not tested against the live platforms. The rate limiter is in memory (single instance). No OAuth state parameter because OAuth is not used yet. |

@@ -22,5 +22,5 @@ export function proxy(request) {
 // Public: hosted mockups, unsubscribe, scheduler endpoint (bearer secret), sign-in and recovery
 // pages, legal pages, brand assets.
 export const config = {
-  matcher: ["/((?!m/|unsubscribe|api/unsubscribe|api/cron|login|forgot|reset|accept|setup|privacy|terms|accessibility|brands/|_next/|favicon.ico|icon.svg|robots.txt).*)"],
+  matcher: ["/((?!m/|l/|sm/|unsubscribe|api/unsubscribe|api/cron|login|forgot|reset|accept|setup|privacy|terms|accessibility|brands/|_next/|favicon.ico|icon.svg|robots.txt).*)"],
 };

@@ -20,7 +20,8 @@ Commands: `npm test` (unit tests), `npm run lint`, `npm run build`.
 
 | Input | Variable |
 |---|---|
-| Google Cloud key with Places API (New) enabled and billing on | `GOOGLE_PLACES_API_KEY` |
+| Contact for OpenStreetMap requests (free source) | `OSM_CONTACT` |
+| Optional: Google Cloud key with Places API (New) and billing, only for `DISCOVERY_PROVIDER=google` | `GOOGLE_PLACES_API_KEY` |
 | Resend API key (sender domain must be verified in Resend) | `RESEND_API_KEY` |
 | Sender name and email, reply-to | `SENDER_NAME`, `SENDER_EMAIL`, `REPLY_TO_EMAIL` |
 | Real physical mailing address (CAN-SPAM) | `MAILING_ADDRESS` |
@@ -32,7 +33,7 @@ Target cities and categories are entered in the dashboard on each run.
 
 ## The three phases
 
-1. **Discovery.** Places API (New) Text Search per category and city. `websiteUri` comes back in the same call, so no separate Place Details request is needed. Results dedupe on Google Place ID per brand. A listing whose only "website" is Facebook, Instagram, Linktree, Yelp and similar counts as no website and is flagged "social page only".
+1. **Discovery.** Default source is **OpenStreetMap** (Nominatim plus Overpass): free, no key, no billing. Set `OSM_CONTACT` to your email or URL (their usage policy requires it). Categories are limited to a built-in list (plumber, restaurant, barber, dentist and about 35 more, see `lib/overpass.js`). OSM data is volunteer-maintained, so a missing website tag often just means nobody added it; the lead page warns you to verify by hand before outreach. Optional paid source: set `DISCOVERY_PROVIDER=google` to use the Places API (New), where `websiteUri` comes back in the same call. Results dedupe on Google Place ID per brand. A listing whose only "website" is Facebook, Instagram, Linktree, Yelp and similar counts as no website and is flagged "social page only".
 2. **Mockup.** Each no-website lead gets an unguessable hosted page at `/m/<token>`, rendered from real data (name, category, city, phone, address). Unknowns are marked placeholders; copy is labeled draft; no stock photos, gradients, purple, or three-card rows. Pages are `noindex`.
 3. **Outreach.** A draft is created per lead and lands in the review queue. You add a recipient email (Google does not provide one), edit, approve, tick "I reviewed this", and click send.
 

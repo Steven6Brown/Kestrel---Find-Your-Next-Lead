@@ -3,7 +3,8 @@ import { discoverAction, draftAllAction } from "./actions";
 import { DEFAULT_BRAND_ID, getBrand, brandReadiness } from "@/config/brands";
 import { product } from "@/config/product";
 import { listSearches, stats } from "@/lib/store";
-import { MAX_COMBOS_PER_RUN } from "@/lib/discovery";
+import { MAX_COMBOS_PER_RUN, provider } from "@/lib/discovery";
+import { supportedCategories } from "@/lib/overpass";
 import { baseUrl, isPublicHttps } from "@/lib/tokens";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,9 @@ export default async function Dashboard({ searchParams }) {
   const searches = await listSearches(DEFAULT_BRAND_ID);
   const brand = getBrand(DEFAULT_BRAND_ID);
   const setup = [
-    ...(process.env.GOOGLE_PLACES_API_KEY ? [] : ["GOOGLE_PLACES_API_KEY is not set, so discovery cannot run."]),
+    ...(provider() === "google"
+      ? (process.env.GOOGLE_PLACES_API_KEY ? [] : ["DISCOVERY_PROVIDER is google but GOOGLE_PLACES_API_KEY is not set."])
+      : (process.env.OSM_CONTACT || process.env.SENDER_EMAIL ? [] : ["OSM_CONTACT is not set. OpenStreetMap requires an identifying contact (an email or URL) on requests."])),
     ...brandReadiness(brand),
     ...(process.env.RESEND_API_KEY ? [] : ["RESEND_API_KEY is not set, so sending is disabled."]),
     ...(isPublicHttps(baseUrl()) ? [] : ["APP_BASE_URL is not a public https URL. Mockup links in emails will not work for recipients and sending stays blocked."]),
@@ -57,7 +60,7 @@ export default async function Dashboard({ searchParams }) {
         <form action={discoverAction} className="space-y-5 border-2 border-ink bg-surface p-5">
           <h2 id="disc-h" className="text-2xl font-extrabold">Find leads</h2>
           <p className="text-muted">
-            Each category is searched in each location (up to {MAX_COMBOS_PER_RUN} searches per run). Each search is a billed Google request.
+            Each category is searched in each location (up to {MAX_COMBOS_PER_RUN} searches per run). Source: {provider() === "google" ? "Google Places (billed per request)" : "OpenStreetMap (free; a missing website there can just mean nobody added it, so verify before outreach)"}.
           </p>
           <div>
             <label htmlFor="locations" className="block font-semibold">Locations (one per line)</label>
@@ -67,7 +70,7 @@ export default async function Dashboard({ searchParams }) {
           <div>
             <label htmlFor="categories" className="block font-semibold">Business categories (one per line)</label>
             <textarea id="categories" name="categories" rows={4} required className="field mt-1" aria-describedby="cat-h" />
-            <p id="cat-h" className="mt-1 text-sm text-muted">For example, the kind of business you want to help.</p>
+            <p id="cat-h" className="mt-1 text-sm text-muted">{provider() === "google" ? "Any business type." : `Supported: ${supportedCategories().join(", ")}.`}</p>
           </div>
           <div>
             <label htmlFor="maxPages" className="block font-semibold">Pages per search</label>

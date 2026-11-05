@@ -128,3 +128,43 @@ test("mockup helpers", () => {
   const copy = JSON.stringify(categoryCopy({ name: "A", category: "restaurant" }));
   assert.ok(!/[–—]|lorem/i.test(copy));
 });
+
+test("openstreetmap source: category map, geocode, query, normalize", async () => {
+  process.env.OSM_CONTACT = "me@example.test";
+  const osm = await import("../lib/overpass.js");
+  assert.equal(osm.resolveCategory("Plumbers").key, "plumber");
+  assert.equal(osm.resolveCategory("space tourism"), null);
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: String(url), init });
+    if (String(url).startsWith(osm.NOMINATIM)) return { ok: true, json: async () => [{ osm_type: "relation", osm_id: 123, name: "Testville" }] };
+    return { ok: true, json: async () => ({ elements: [
+      { type: "node", id: 1, tags: { name: "Pipe Co", phone: "555 0100", "addr:street": "Main St", "addr:housenumber": "5" } },
+      { type: "node", id: 2, tags: { name: "Has Site", website: "https://hassite.example" } },
+      { type: "way", id: 3, tags: { name: "FB Only", "contact:facebook": "https://facebook.com/fbonly" } },
+      { type: "node", id: 4, tags: { amenity: "x" } },
+    ] }) };
+  };
+  const out = await osm.searchOverpass({ location: "Testville, TS", category: "plumber", fetchImpl });
+  assert.equal(out.length, 3);
+  assert.deepEqual(out.map((p) => p.bucket), ["no_website", "has_website", "no_website"]);
+  assert.equal(out[2].website_kind, "social");
+  assert.equal(out[0].place_id, "osm:node/1");
+  assert.equal(out[0].city, "Testville");
+  const body = decodeURIComponent(calls[1].init.body);
+  assert.ok(body.includes("area(3600000123)") && body.includes('["craft"="plumber"]'));
+  assert.ok(calls.every((c) => c.init.headers["User-Agent"].includes("me@example.test")));
+  await assert.rejects(osm.searchOverpass({ location: "x y", category: "nope", fetchImpl }), /not a supported/);
+});
+
+test("osm leads flow through discovery and dedupe", async () => {
+  const osm = await import("../lib/overpass.js");
+  const fetchImpl = async (url) => String(url).startsWith(osm.NOMINATIM)
+    ? { ok: true, json: async () => [{ osm_type: "relation", osm_id: 9, name: "Zed" }] }
+    : { ok: true, json: async () => ({ elements: [{ type: "node", id: 77, tags: { name: "Zed Plumbing" } }] }) };
+  const search = (a) => osm.searchOverpass({ ...a, fetchImpl });
+  const r1 = await runDiscovery({ brandId: "aquila", locations: ["Zed, ZZ"], categories: ["plumber"], search });
+  const r2 = await runDiscovery({ brandId: "aquila", locations: ["Zed, ZZ"], categories: ["plumber"], search });
+  assert.equal(r1.created, 1);
+  assert.equal(r2.created, 0);
+});

@@ -1,6 +1,6 @@
 # Testing
 
-## Automated (`npm test`, 10 tests, all passing at last run, run against PGlite, a real Postgres engine)
+## Automated (`npm test`, 12 tests, all passing at last run, run against PGlite, a real Postgres engine)
 Website classification, Places response normalization and pagination, dedupe on Place ID, bucket split, brand isolation, discovery cost cap, send guardrails (approval, recipient, suppression, cap), opt-out token binding, one-click headers, mockup helpers (no dash punctuation, no lorem, tel sanitizing, contrast choice).
 
 ## Manual, performed
@@ -11,7 +11,7 @@ Website classification, Places response normalization and pagination, dedupe on 
 
 ## Not performed
 - Connecting to a real Neon / Vercel Postgres instance through `pg` (only the PGlite path was exercised).
-- Live Google Places or Resend calls (no keys were available; both are covered only by mocked tests).
+- Live OpenStreetMap (Nominatim / Overpass) calls, live Google Places or Resend calls (no keys were available; both are covered only by mocked tests).
 - Real phone or tablet testing, tablet landscape, screen reader and keyboard-only passes, automated accessibility scan.
 - Sending an actual email and clicking a real unsubscribe link end to end.
 - Vercel deployment.

@@ -29,13 +29,17 @@ export default async function LeadPage({ params, searchParams }) {
       <h1 className="mt-2 text-4xl font-extrabold">{lead.name}</h1>
       <div className="mt-4"><Flash sp={sp} /></div>
 
+      {lead.place_id.startsWith("osm:") && isNoSite && (
+        <p className="mb-4 border-2 border-warn bg-warn-bg p-3 text-warn">This lead came from OpenStreetMap. Before any outreach, search for the business yourself to confirm it really has no website.</p>
+      )}
+
       <dl className="grid gap-x-8 gap-y-3 border-2 border-ink bg-surface p-5 sm:grid-cols-2">
         {[
           ["Category", lead.category_label],
           ["City", [lead.city, lead.region].filter(Boolean).join(", ")],
           ["Phone", lead.phone],
           ["Address", lead.address],
-          ["Website on Google", lead.website || "None listed"],
+          ["Website in listing", lead.website || "None listed"],
           ["Bucket", isNoSite ? `No website${lead.website_kind === "social" ? " (social page only)" : ""}` : "Has website"],
         ].map(([k, v]) => (
           <div key={k}>

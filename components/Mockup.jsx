@@ -41,7 +41,7 @@ export default function Mockup({ lead, brand }) {
       <div style={{ background: accent, color: onAccent }} className="px-4 py-3 text-sm">
         <p className="mx-auto max-w-5xl">
           <strong>Concept preview.</strong> This is a quick idea of what a website for {lead.name} could look
-          like, made by {brand.name} from public Google listing details. It is not an official site and
+          like, made by {brand.name} from public business listing details. It is not an official site and
           anything marked as a placeholder is not confirmed.
         </p>
       </div>
@@ -144,7 +144,7 @@ export default function Mockup({ lead, brand }) {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-bold uppercase tracking-wide text-[#2d343b]">Address (from Google listing)</dt>
+                  <dt className="text-sm font-bold uppercase tracking-wide text-[#2d343b]">Address (from public listing)</dt>
                   <dd className="text-lg">{lead.address || "To confirm"}</dd>
                 </div>
                 <div>
@@ -162,8 +162,9 @@ export default function Mockup({ lead, brand }) {
         <div className="mx-auto max-w-5xl space-y-2">
           <p>
             Concept only, prepared by {brand.name}. Not affiliated with {lead.name}. Built from public
-            Google listing details; copy marked as draft is a suggestion, not a statement of fact.
+            business listing details; copy marked as draft is a suggestion, not a statement of fact.
           </p>
+          {lead.place_id?.startsWith("osm:") ? <p>Listing data from OpenStreetMap, © OpenStreetMap contributors (ODbL).</p> : null}
           {brand.replyTo ? (
             <p>
               Questions or want this taken down? Email{" "}

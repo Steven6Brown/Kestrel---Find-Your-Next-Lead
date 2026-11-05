@@ -10,7 +10,9 @@
 - Dashboard protected by HTTP Basic Auth (`proxy.js`) rather than a login system.
 - Social profiles and link-in-bio pages count as "no website".
 - Mockup accent color is a neutral teal placeholder, not a confirmed brand color.
-- Text Search returns `websiteUri` directly, so Place Details calls are skipped.
+- Free OpenStreetMap (Nominatim + Overpass) is the default discovery source; Google Places is an optional paid provider (`DISCOVERY_PROVIDER`). Google Search pages are never scraped (Terms of Service).
+- Google Text Search returns `websiteUri` directly, so Place Details calls are skipped.
+- OSM-sourced leads are marked by a `osm:` place id prefix and carry a verify-first warning and ODbL attribution.
 
 **Open questions:** sender identity and mailing address (env), target geography and categories, Aquila logo and colors, where to host for real sending, whether outreach targets include Canada or the EU (different consent law than CAN-SPAM; this app only implements CAN-SPAM basics and is not legal advice).
 

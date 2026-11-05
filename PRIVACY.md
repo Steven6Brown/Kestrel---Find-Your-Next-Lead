@@ -2,7 +2,7 @@
 
 | Data | Source | Why | Where | Retention |
 |---|---|---|---|---|
-| Business name, category, address, city, phone, website, maps link | Google Places API (externally sourced) | Find leads and build concept page | Postgres `leads` | Until you delete the rows; no delete UI yet |
+| Business name, category, address, city, phone, website, maps link | Google Places API or OpenStreetMap (externally sourced) | Find leads and build concept page | Postgres `leads` | Until you delete the rows; no delete UI yet |
 | Recipient email, notes | Typed by the operator | Send one reviewed email | `leads` | Same |
 | Email text and send status | Generated, then edited by the operator | Review and audit trail | `drafts` | Same |
 | Opted-out addresses | Unsubscribe link or manual entry | Never contact again | `suppressions` | Kept indefinitely on purpose |

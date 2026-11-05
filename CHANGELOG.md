@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.0 (branch crm-core)
+- Insights page (under Today in the menu): headline numbers, Money (owners and admins only: billed and paid per week or month, still owed, open proposals, average project, money by kind of work), where contacts get to (funnel), outreach (emails per week, results for no website and redesign emails), where wins come from (business type, city, source), and speed (days to win, overdue follow-ups, meetings held). Periods: 30 days, 90 days, 12 months, all time.
+- Every percentage shows the counts behind it, and a rate over fewer than 20 items is shown as a plain count marked "too few to judge". Charts are plain SVG that follow light and dark, each with a table of the same numbers.
+- Drafts now record which template made them (no website or redesign); existing drafts are filled in from the lead type.
+
 ## 2.0.0 (branch crm-core)
 - New look and flow. Aquila navy sidebar with the menu in the order the work happens (Today, 1 Find, 2 Reach out, 3 Follow up, 4 Deliver, Admin), light page with white cards by default, and a light and dark toggle that is remembered in a cookie (no flash on load). On phones the menu opens from a Menu button.
 - Fewer places to look: Leads and Redesign targets are one Prospects area with tabs; Meetings sit under Calendar; Opt-outs, Connections, Users, Audit and Account are under Settings, which also holds the email setup checklist; the scanner page no longer repeats the draft button or a second pipeline.

@@ -48,6 +48,14 @@ const PATHS = {
       <circle cx="9" cy="18" r="2" />
     </>
   ),
+  chart: (
+    <>
+      <path d="M4 20h16" />
+      <rect x="6" y="11" width="3" height="6" rx="0.5" />
+      <rect x="11" y="6" width="3" height="11" rx="0.5" />
+      <rect x="16" y="9" width="3" height="8" rx="0.5" />
+    </>
+  ),
   moon: <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z" />,
   chevron: <path d="M9 6l6 6-6 6" />,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,

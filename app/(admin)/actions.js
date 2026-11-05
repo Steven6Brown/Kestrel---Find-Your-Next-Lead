@@ -74,7 +74,7 @@ async function makeDraft(lead) {
   const bookingLink = (await store.getBookingUrl(BRAND)) || "";
   const build = lead.bucket === "has_website" ? buildRedesignDraft : buildDraft;
   const { subject, body } = build({ lead, brand, mockupLink: mockupUrl(lead.mockup_token), bookingLink });
-  await store.saveDraft(BRAND, lead.id, { subject, body });
+  await store.saveDraft(BRAND, lead.id, { subject, body, kind: lead.bucket === "has_website" ? "redesign" : "no_website" });
 }
 
 export async function siteCheckAction(formData) {

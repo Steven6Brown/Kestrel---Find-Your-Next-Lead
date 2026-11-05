@@ -49,6 +49,16 @@ To run on a schedule: open the campaign and copy the one-line command it shows i
 7. Before approving, open the business's own site and make sure the findings are true. The check reads the page code and can be wrong.
 8. Optional: add a free `PAGESPEED_API_KEY` to `.env.local` (see `.env.example`) and restart to include Google's measured speed and accessibility.
 
+## 3c. See how the business is doing (Insights)
+
+1. Click **Insights**, right under **Today**. Pick **Last 30 days**, **Last 90 days**, **Last 12 months**, or **All time** along the top.
+2. The four tiles at the top are emails sent, replies, wins, and money paid (owners and admins) or days to win (everyone else).
+3. **Money** (owners and admins only) shows billed and paid as bars, what you are still owed, open proposals, the average project, and money by kind of work.
+4. **Where contacts get to** is a funnel from found to won. **Outreach** compares your no website email with your redesign email. **Where wins come from** ranks business types, cities, and sources.
+5. A reply, meeting, or win only counts when you change that contact's stage, because Kestrel cannot see your inbox. Keep stages up to date and the numbers stay true.
+6. Percentages over fewer than 20 contacts show as plain counts ("3 of 8, too few to judge"). Do not make decisions from those yet.
+7. Under each chart, **View as a table** shows the same numbers as text.
+
 ## 4. Outreach email (when you are ready to send for real)
 
 Nothing sends until you do all of these. You can skip this section while testing.

@@ -1969,3 +1969,262 @@ test("the Prospects tabs map filters to exactly one highlighted tab", async () =
   assert.equal(tabFor(lf.parseFilters({ site: "bogus" })), "none", "junk falls back to the default view");
   assert.equal(tabFor(lf.parseFilters({ open: "closed", site: "none" })), "closed", "closed wins");
 });
+
+// ---------------- insights (business statistics) ----------------
+
+const iso = (y, m, d, h = 12) => new Date(y, m, d, h).toISOString();
+const NOW = new Date(2026, 10, 5, 12);
+const TODAY = "2026-11-05";
+function insightFixture() {
+  return {
+    leads: [
+      { id: 1, source: "kestrel", category_label: "Bakery", city: "Cleveland", stage: "won", first_seen_at: iso(2026, 8, 20) },
+      { id: 2, source: "kestrel", category_label: "Salon", city: "Akron", stage: "contacted", first_seen_at: iso(2026, 8, 21) },
+      { id: 3, source: "kestrel", category_label: "Bakery", city: "Cleveland", stage: "new", first_seen_at: iso(2026, 9, 1) },
+      { id: 4, source: "referral", category_label: "", city: "", stage: "replied", first_seen_at: iso(2026, 9, 3) },
+      { id: 5, source: "kestrel", category_label: "Bakery", city: "Akron", stage: "new", first_seen_at: iso(2026, 9, 4) },
+      { id: 6, source: "kestrel", category_label: "Bakery", city: "Cleveland", stage: "won", first_seen_at: iso(2026, 0, 10) },
+      { id: 7, source: "kestrel", category_label: "Cafe", city: "Akron", stage: "lost", first_seen_at: iso(2026, 7, 20) },
+    ],
+    drafts: [
+      { lead_id: 1, kind: "no_website", status: "sent", sent_at: iso(2026, 9, 1) },
+      { lead_id: 2, kind: "redesign", status: "sent", sent_at: iso(2026, 9, 2) },
+      { lead_id: 3, kind: "no_website", status: "draft", sent_at: null },
+      { lead_id: 7, kind: null, status: "sent", sent_at: iso(2026, 8, 1) },
+    ],
+    emails: [{ lead_id: 1, first_at: iso(2026, 8, 30) }],
+    events: [
+      { lead_id: 1, to: "contacted", created_at: iso(2026, 9, 1) },
+      { lead_id: 1, to: "replied", created_at: iso(2026, 9, 5) },
+      { lead_id: 1, to: "meeting_booked", created_at: iso(2026, 9, 10) },
+      { lead_id: 1, to: "proposal_sent", created_at: iso(2026, 9, 15) },
+      { lead_id: 1, to: "won", created_at: iso(2026, 9, 25) },
+      { lead_id: 7, to: "contacted", created_at: iso(2026, 8, 1) },
+      { lead_id: 7, to: "replied", created_at: iso(2026, 8, 5) },
+      { lead_id: 7, to: "lost", created_at: iso(2026, 8, 20) },
+    ],
+    invoices: [
+      { status: "PAID", amount_cents: 100000, due_cents: null, currency: "USD", sent_at: iso(2026, 9, 1), paid_at: iso(2026, 9, 20), due_on: "2026-10-15", project_type: "website" },
+      { status: "SENT", amount_cents: 50000, due_cents: null, currency: "USD", sent_at: iso(2026, 9, 15), paid_at: null, due_on: "2026-10-30", project_type: "website" },
+      { status: "PAID", amount_cents: 30000, due_cents: null, currency: "USD", sent_at: iso(2026, 8, 1), paid_at: iso(2026, 8, 15), due_on: null, project_type: "it_support" },
+      { status: "PAID", amount_cents: 99999, due_cents: null, currency: "EUR", sent_at: iso(2026, 9, 1), paid_at: iso(2026, 9, 2), due_on: null, project_type: "website" },
+      { status: "CANCELLED", amount_cents: 777, due_cents: null, currency: "USD", sent_at: iso(2026, 9, 2), paid_at: null, due_on: null, project_type: "website" },
+      { status: "PENDING", amount_cents: 555, due_cents: null, currency: "USD", sent_at: null, paid_at: null, due_on: null, project_type: "website" },
+    ],
+    projects: [
+      { type: "website", status: "delivered", quoted_amount_cents: 100000, currency: "USD", created_at: iso(2026, 8, 20) },
+      { type: "website", status: "proposed", quoted_amount_cents: 50000, currency: "USD", created_at: iso(2026, 9, 10) },
+      { type: "app", status: "proposed", quoted_amount_cents: 0, currency: "USD", created_at: iso(2026, 9, 10) },
+      { type: "website", status: "cancelled", quoted_amount_cents: 90000, currency: "USD", created_at: iso(2026, 9, 10) },
+    ],
+    tasks: [{ due_on: "2026-11-01" }, { due_on: "2026-11-10" }],
+    meetings: [{ status: "done", starts_at: iso(2026, 9, 12) }, { status: "scheduled", starts_at: iso(2026, 10, 10) }, { status: "done", starts_at: iso(2026, 0, 12) }],
+  };
+}
+
+test("insights: ranges, rates and the small sample rule", async () => {
+  const ins = await import("../lib/insights.js");
+  assert.equal(ins.parseRange("30"), "30");
+  for (const bad of [undefined, "", "7", "all; x", null]) assert.equal(ins.parseRange(bad), "90");
+  assert.equal(ins.rangeStart("all", NOW), null);
+  const s30 = ins.rangeStart("30", NOW);
+  assert.equal(`${s30.getFullYear()}-${s30.getMonth() + 1}-${s30.getDate()} ${s30.getHours()}`, "2026-10-7 0", "30 days including today");
+  assert.deepEqual(ins.rate(3, 10), { num: 3, den: 10, pct: 30, small: true });
+  assert.deepEqual(ins.rate(5, 20), { num: 5, den: 20, pct: 25, small: false });
+  assert.deepEqual(ins.rate(0, 0), { num: 0, den: 0, pct: null, small: true });
+  assert.equal(ins.rateText(ins.rate(3, 10)), "3 of 10, too few to judge");
+  assert.equal(ins.rateText(ins.rate(5, 20)), "25% (5 of 20)");
+  assert.equal(ins.rateText(ins.rate(0, 0)), "No data yet");
+  assert.equal(ins.rateText(null), "No data yet");
+});
+
+test("insights: time buckets cover the period with zeros and never lose an item", async () => {
+  const ins = await import("../lib/insights.js");
+  const w = ins.makeBuckets(ins.rangeStart("30", NOW), NOW);
+  assert.equal(w.unit, "week");
+  assert.equal(w.buckets.length, 5, "weeks starting Oct 5, 12, 19, 26 and Nov 2");
+  assert.equal(w.buckets[0].start.getDay(), 1, "weeks start on Monday");
+  assert.equal(w.buckets[0].label, "Oct 5");
+  const m = ins.makeBuckets(ins.rangeStart("365", NOW), NOW);
+  assert.equal(m.unit, "month");
+  assert.equal(m.buckets.length, 13);
+  assert.equal(m.buckets[0].label, "Nov '25");
+  assert.equal(m.buckets[2].label, "Jan '26");
+  assert.equal(m.buckets[3].label, "Feb");
+  const sums = ins.sumByBucket(w.buckets, [{ t: iso(2026, 9, 7) }, { t: iso(2026, 9, 8) }, { t: iso(2026, 10, 4) }, { t: iso(2026, 8, 1) }, { t: "garbage" }], (x) => x.t);
+  assert.deepEqual(sums, [2, 0, 0, 0, 1], "outside the period and unreadable dates are ignored");
+  const all = ins.makeBuckets(null, NOW, new Date(2026, 4, 3).getTime());
+  assert.equal(all.unit, "month");
+  assert.ok(all.buckets.length <= 24);
+  const noData = ins.makeBuckets(null, NOW, null);
+  assert.ok(noData.buckets.length >= 1, "all time with no data still draws something");
+});
+
+test("insights: the funnel counts how far each contact got, and only goes down", async () => {
+  const ins = await import("../lib/insights.js");
+  const rows = insightFixture();
+  const ranks = ins.leadRanks(rows);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7].map((id) => ranks.get(id)), [6, 2, 1, 3, 0, 6, 3], "lost contacts keep the progress they made");
+  const f = ins.computeFunnel(rows, ins.rangeStart("90", NOW).getTime(), NOW.getTime());
+  assert.deepEqual(f.map((s) => s.count), [6, 5, 4, 3, 1, 1, 1]);
+  for (let i = 1; i < f.length; i++) assert.ok(f[i].count <= f[i - 1].count, "never more at a later step");
+  assert.equal(f[0].ofPrev, null);
+  assert.deepEqual(f[1].ofPrev, { num: 5, den: 6, pct: 83, small: true });
+  assert.deepEqual(f[6].ofFound, { num: 1, den: 6, pct: 17, small: true });
+  const all = ins.computeFunnel(rows, null, NOW.getTime());
+  assert.deepEqual(all.map((s) => s.count), [7, 6, 5, 4, 2, 2, 2], "all time adds the older won contact");
+  assert.deepEqual(ins.computeFunnel({ leads: [] }, null, NOW.getTime()).map((s) => s.count), [0, 0, 0, 0, 0, 0, 0], "empty data");
+});
+
+test("insights: outreach results by kind of email, with the counts behind every rate", async () => {
+  const ins = await import("../lib/insights.js");
+  const o = ins.computeOutreach(insightFixture(), ins.rangeStart("90", NOW).getTime(), NOW.getTime(), NOW);
+  assert.equal(o.totalSent, 3);
+  assert.equal(o.unit, "week");
+  assert.equal(o.buckets.reduce((a, b) => a + b.values[0], 0), 3, "every send lands in a week");
+  const nw = o.byKind.find((k) => k.key === "no_website");
+  const rd = o.byKind.find((k) => k.key === "redesign");
+  assert.equal(nw.sent, 2, "an email with no recorded kind counts as no website");
+  assert.deepEqual([nw.replied.num, nw.meetings.num, nw.won.num], [2, 1, 1]);
+  assert.deepEqual([rd.sent, rd.replied.num, rd.won.num], [1, 0, 0]);
+  assert.equal(nw.replied.small, true, "two emails is too few to judge");
+  const none = ins.computeOutreach({ drafts: [], leads: [] }, null, NOW.getTime(), NOW);
+  assert.equal(none.totalSent, 0);
+  assert.equal(ins.rateText(none.byKind[0].replied), "No data yet");
+  const month = ins.computeOutreach(insightFixture(), ins.rangeStart("30", NOW).getTime(), NOW.getTime(), NOW);
+  assert.equal(month.totalSent, 0, "all three sends are older than 30 days, which starts on Oct 7");
+});
+
+test("insights: where wins come from, grouped and ranked", async () => {
+  const ins = await import("../lib/insights.js");
+  const rows = insightFixture();
+  const s = ins.rangeStart("90", NOW).getTime();
+  const cat = ins.computeWhere(rows, s, NOW.getTime(), (l) => l.category_label);
+  assert.deepEqual(cat.map((c) => [c.key, c.leads, c.contacted, c.won]), [["Bakery", 3, 1, 1], ["Cafe", 1, 1, 0], ["Salon", 1, 1, 0]], "ties broken by number of leads, then name");
+  assert.ok(!cat.some((c) => c.key === ""), "unknown values are left out, not grouped under nothing");
+  assert.deepEqual(cat[0].winRate, { num: 1, den: 1, pct: 100, small: true }, "100 percent of one is not a result");
+  const src = ins.computeWhere(rows, s, NOW.getTime(), (l) => l.source);
+  assert.deepEqual(src.map((c) => [c.key, c.leads, c.contacted]), [["kestrel", 5, 3], ["referral", 1, 1]]);
+  assert.equal(ins.computeWhere(rows, s, NOW.getTime(), (l) => l.city, 1).length, 1, "limit applies");
+});
+
+test("insights: days to win and activity", async () => {
+  const ins = await import("../lib/insights.js");
+  const sp = ins.computeSpeed(insightFixture(), ins.rangeStart("90", NOW).getTime(), NOW.getTime(), TODAY);
+  assert.equal(sp.wonCount, 1);
+  assert.equal(sp.medianDays, 25, "first email Sept 30 to won Oct 25");
+  assert.equal(sp.overdueFollowups, 1);
+  assert.equal(sp.meetingsHeld, 1, "the January meeting is outside the period");
+  const empty = ins.computeSpeed({}, null, NOW.getTime(), TODAY);
+  assert.deepEqual(empty, { medianDays: null, wonCount: 0, overdueFollowups: 0, meetingsHeld: 0 });
+  const odd = ins.computeSpeed({ events: [{ lead_id: 1, to: "contacted", created_at: iso(2026, 9, 1) }, { lead_id: 1, to: "won", created_at: iso(2026, 9, 4) }, { lead_id: 2, to: "contacted", created_at: iso(2026, 9, 1) }, { lead_id: 2, to: "won", created_at: iso(2026, 9, 10) }, { lead_id: 3, to: "contacted", created_at: iso(2026, 9, 1) }, { lead_id: 3, to: "won", created_at: iso(2026, 9, 21) }] }, null, NOW.getTime(), TODAY);
+  assert.equal(odd.medianDays, 9, "the middle of 3, 9 and 20 days");
+});
+
+test("insights: money counts only real, sent, US dollar invoices", async () => {
+  const ins = await import("../lib/insights.js");
+  const m = ins.computeMoney(insightFixture(), ins.rangeStart("90", NOW).getTime(), NOW.getTime(), NOW, TODAY);
+  assert.equal(m.billedCents, 180000, "paid and sent invoices, not cancelled, pending or euros");
+  assert.equal(m.paidCents, 130000);
+  assert.deepEqual(m.revenueByType, [{ type: "website", cents: 100000 }, { type: "it_support", cents: 30000 }]);
+  assert.equal(m.buckets.reduce((a, b) => a + b.values[0], 0), 180000, "every dollar billed is in a bar");
+  assert.equal(m.buckets.reduce((a, b) => a + b.values[1], 0), 130000);
+  assert.deepEqual([m.outstandingCents, m.outstandingCount, m.overdueCents, m.overdueCount], [50000, 1, 50000, 1]);
+  assert.deepEqual([m.avgProjectCents, m.projectCount], [75000, 2], "cancelled and unpriced projects are not averaged");
+  assert.deepEqual([m.openProposalCents, m.openProposalCount], [50000, 1]);
+  assert.equal(m.skippedOtherCurrency, 1, "the euro invoice is reported, not mixed in");
+  const none = ins.computeMoney({}, null, NOW.getTime(), NOW, TODAY);
+  assert.deepEqual([none.billedCents, none.paidCents, none.avgProjectCents, none.outstandingCents], [0, 0, null, 0]);
+});
+
+test("insights: money is only computed when the viewer may see it", async () => {
+  const ins = await import("../lib/insights.js");
+  const rows = insightFixture();
+  assert.equal(ins.computeInsights(rows, { now: NOW, todayStr: TODAY }).money, null);
+  const full = ins.computeInsights(rows, { range: "30", now: NOW, includeMoney: true, todayStr: TODAY });
+  assert.ok(full.money && full.funnel.length === 7 && full.range === "30");
+  assert.deepEqual(Object.keys(full.where), ["category", "city", "source"]);
+});
+
+test("chart maths: round axes, compact numbers, readable labels", async () => {
+  const c = await import("../lib/chartmath.js");
+  assert.deepEqual(c.niceScale(0), { top: 4, step: 1 });
+  assert.deepEqual(c.niceScale(7), { top: 8, step: 2 });
+  assert.deepEqual(c.niceScale(10), { top: 20, step: 5 }, "2.5 per interval rounds up to 5");
+  for (const v of [1, 3, 9, 37, 120, 999, 1234, 56000, 0.5]) {
+    const s = c.niceScale(v);
+    assert.ok(s.top >= v, `top covers ${v}`);
+    assert.ok([1, 2, 5].includes(s.step / 10 ** Math.floor(Math.log10(s.step))), `step is 1, 2 or 5 times a power of ten for ${v}`);
+    assert.equal(Math.round(s.top / s.step), 4, "four intervals");
+  }
+  assert.equal(c.compact(850), "850");
+  assert.equal(c.compact(1200), "1.2k");
+  assert.equal(c.compact(10000), "10k");
+  assert.equal(c.compact(3400000), "3.4m");
+  assert.equal(c.compact(-1500), "-1.5k");
+  assert.equal(c.compactMoney(85000), "$850");
+  assert.equal(c.compactMoney(123456), "$1.2k");
+  assert.equal(c.labelEvery(5), 1);
+  assert.equal(c.labelEvery(24, 10), 3);
+  assert.equal(c.labelEvery(0), 1);
+});
+
+test("the menu has Insights right under Today", async () => {
+  const nav = await import("../lib/nav.js");
+  assert.deepEqual(nav.NAV_GROUPS[0].items.map((i) => i.label), ["Today", "Insights"]);
+  const all = nav.NAV_GROUPS.flatMap((g) => g.items);
+  assert.deepEqual(all.filter((i) => nav.isActive(i, "/insights")).map((i) => i.label), ["Insights"]);
+  assert.deepEqual(all.filter((i) => nav.isActive(i, "/insights/anything")).map((i) => i.label), ["Insights"]);
+  assert.ok(all.length <= 9);
+});
+
+test("drafts remember which template made them, and old drafts are filled in by lead type", async () => {
+  const noSite = await seedVerifyLead("Kind Check Lead Verify8");
+  const withSite = await seedAuditLead("Kind Check Site Audit8", "https://kindcheck8.example/");
+  await store.saveDraft("aquila", noSite, { subject: "s", body: "b", kind: "no_website" });
+  await store.saveDraft("aquila", withSite, { subject: "s", body: "b", kind: "redesign" });
+  assert.equal((await store.getDraftByLead("aquila", noSite)).kind, "no_website");
+  assert.equal((await store.getDraftByLead("aquila", withSite)).kind, "redesign");
+  // editing the text by hand keeps the kind; regenerating can change it
+  await store.saveDraft("aquila", withSite, { subject: "edited", body: "edited" });
+  assert.equal((await store.getDraftByLead("aquila", withSite)).kind, "redesign", "an edit without a kind leaves it alone");
+  await store.saveDraft("aquila", withSite, { subject: "again", body: "again", kind: "no_website" });
+  assert.equal((await store.getDraftByLead("aquila", withSite)).kind, "no_website");
+});
+
+test("insights rows come from real data, stay inside the brand, and hide money unless asked", async () => {
+  const ins = await import("../lib/insights.js");
+  const lead = await seedVerifyLead("Insight Rows Lead Verify9");
+  await store.saveDraft("aquila", lead, { subject: "s", body: "b", kind: "no_website" });
+  await store.setStage("aquila", lead, "contacted");
+  await store.setStage("aquila", lead, "replied");
+  const rows = await store.insightsRows("aquila");
+  assert.ok(rows.leads.some((l) => l.id === lead));
+  assert.ok(rows.drafts.some((d) => d.lead_id === lead && d.kind === "no_website"));
+  const mine = rows.events.filter((e) => e.lead_id === lead).map((e) => e.to);
+  assert.deepEqual(mine, ["contacted", "replied"], "stage changes come back with where they went");
+  assert.deepEqual(rows.invoices, [], "money tables are not read unless asked");
+  assert.deepEqual(rows.projects, []);
+  const withMoney = await store.insightsRows("aquila", { includeMoney: true });
+  assert.ok(Array.isArray(withMoney.invoices) && Array.isArray(withMoney.projects));
+  const other = await store.insightsRows("other", { includeMoney: true });
+  assert.deepEqual([other.leads.length, other.drafts.length, other.events.length, other.emails.length, other.tasks.length, other.meetings.length, other.invoices.length, other.projects.length], [0, 0, 0, 0, 0, 0, 0, 0], "another brand sees none of it");
+  // the real rows feed the calculations without error, and the reply is counted
+  const d = ins.computeInsights(rows, { range: "all", includeMoney: true, todayStr: "2026-11-05", now: new Date() });
+  assert.ok(d.funnel[0].count >= 1 && d.funnel[3].count >= 1);
+  // a closed business is left out of every number
+  await store.setClosed("aquila", lead, true);
+  assert.ok(!(await store.insightsRows("aquila")).leads.some((l) => l.id === lead), "closed businesses are not counted");
+  await store.setClosed("aquila", lead, false);
+});
+
+test("a corrupt stage log entry cannot break the statistics", async () => {
+  const lead = await seedVerifyLead("Corrupt Log Lead Verify10");
+  await store.addActivity("aquila", lead, { kind: "stage_change", body: "x", metadata: {} });
+  const rows = await store.insightsRows("aquila");
+  const ev = rows.events.filter((e) => e.lead_id === lead);
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0].to, "", "a missing destination becomes empty, not a crash");
+  const ins = await import("../lib/insights.js");
+  assert.doesNotThrow(() => ins.computeInsights(rows, { range: "all", now: new Date(), todayStr: "2026-11-05" }));
+});

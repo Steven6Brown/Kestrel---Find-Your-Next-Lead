@@ -1,32 +1,37 @@
 @import "tailwindcss";
 
-/* Flat color only. No gradients, no purple. */
+/* Aquila Digital brand tokens (sampled from aquiladigital.net). Flat color only: no gradients, no purple. */
 @theme {
-  --color-paper: #f6f5f1;
-  --color-surface: #ffffff;
-  --color-ink: #1b1f23;
-  --color-muted: #4b5560;
-  --color-line: #d5d2c8;
-  --color-brand: #0f6b63;
-  --color-brand-ink: #ffffff;
-  --color-warn: #8a3b00;
-  --color-warn-bg: #fdebd8;
-  --color-ok: #14532d;
-  --color-ok-bg: #dcf2e3;
-  --color-bad: #8b1a1a;
-  --color-bad-bg: #fbe3e3;
-  --font-heading: var(--font-archivo), "Arial Narrow", sans-serif;
-  --font-body: var(--font-inter), system-ui, sans-serif;
+  --color-paper: #0b0e13;
+  --color-surface: #151c27;
+  --color-ink: #ffffff;
+  --color-text: #e5e7eb;
+  --color-muted: #9aa3b4;
+  --color-line: #252f3d;
+  --color-edge: #5b6778; /* 3:1 against the page for input borders and button outlines */
+  --color-brand: #c08a2e;
+  --color-brand-hover: #e0ac4c;
+  --color-brand-ink: #0b0e13;
+  --color-warn: #e0ac4c;
+  --color-warn-bg: #2a2110;
+  --color-ok: #7fd99a;
+  --color-ok-bg: #10261a;
+  --color-bad: #f29b9b;
+  --color-bad-bg: #2d1416;
+  --font-heading: var(--font-space), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body: var(--font-space), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-plex), Menlo, monospace;
 }
 
 html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  color-scheme: dark;
 }
 
 body {
   background: var(--color-paper);
-  color: var(--color-ink);
+  color: var(--color-text);
   font-family: var(--font-body);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
@@ -35,11 +40,21 @@ body {
 
 h1, h2, h3 {
   font-family: var(--font-heading);
+  color: var(--color-ink);
   letter-spacing: -0.01em;
 }
 
+/* Small uppercase mono labels, as on the Aquila Digital site */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-brand);
+}
+
 :focus-visible {
-  outline: 3px solid var(--color-ink);
+  outline: 3px solid var(--color-brand-hover);
   outline-offset: 2px;
 }
 
@@ -50,27 +65,37 @@ h1, h2, h3 {
   min-height: 44px;
   min-width: 44px;
   padding: 0.55rem 1rem;
-  border: 2px solid var(--color-ink);
-  border-radius: 6px;
+  border: 1px solid var(--color-edge);
+  border-radius: 8px;
   font-weight: 600;
-  background: var(--color-surface);
+  font-size: 0.95rem;
+  background: transparent;
   color: var(--color-ink);
   cursor: pointer;
-  transition: background-color 150ms, color 150ms;
+  transition: border-color 150ms, color 150ms, background-color 150ms;
 }
-.btn:hover { background: var(--color-ink); color: var(--color-surface); }
+.btn:hover { border-color: var(--color-brand); color: var(--color-brand-hover); }
 .btn-primary { background: var(--color-brand); border-color: var(--color-brand); color: var(--color-brand-ink); }
-.btn-primary:hover { background: var(--color-ink); border-color: var(--color-ink); }
-.btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+.btn-primary:hover { background: var(--color-brand-hover); border-color: var(--color-brand-hover); color: var(--color-brand-ink); }
+.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.btn[disabled]:hover { border-color: var(--color-edge); color: var(--color-ink); }
+.btn-primary[disabled]:hover { background: var(--color-brand); border-color: var(--color-brand); color: var(--color-brand-ink); }
 
 .field {
   width: 100%;
   min-height: 44px;
   padding: 0.55rem 0.7rem;
-  border: 2px solid var(--color-muted);
-  border-radius: 6px;
-  background: var(--color-surface);
+  border: 1px solid var(--color-edge);
+  border-radius: 4px;
+  background: #0f141c;
   color: var(--color-ink);
+}
+.field:focus { border-color: var(--color-brand); }
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
 }
 
 .reveal { animation: reveal 400ms ease-out both; }
@@ -87,3 +112,27 @@ h1, h2, h3 {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Selectable chips: native inputs hidden visually but still focusable and announced */
+.chip { display: inline-flex; cursor: pointer; }
+.chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.chip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--color-edge);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: transparent;
+  transition: border-color 150ms, background-color 150ms, color 150ms;
+}
+.chip:hover span { border-color: var(--color-brand); }
+.chip input:checked + span {
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+  color: var(--color-brand-ink);
+  font-weight: 600;
+}
+.chip input:checked + span::before { content: "\2713\00a0"; }
+.chip input:focus-visible + span { outline: 3px solid var(--color-brand-hover); outline-offset: 2px; }

@@ -12,7 +12,7 @@ cp .env.example .env.local   # then fill in values
 npm run dev
 ```
 
-Requires Node 20+. With no `DATABASE_URL`, local dev uses an embedded Postgres (PGlite) stored in `./data/pglite`; production needs `DATABASE_URL`. Open http://localhost:3000. If `ADMIN_PASSWORD` is set the dashboard asks for HTTP Basic Auth (user `ADMIN_USER`, default `admin`). In production the app refuses to serve the dashboard until `ADMIN_PASSWORD` is set.
+Requires Node 20+. With no `DATABASE_URL`, local dev uses an embedded Postgres (PGlite) stored in `./data/pglite`; production needs `DATABASE_URL`. Open http://localhost:3000. The first visit shows a one-time **Create the owner account** page (on localhost nothing else is needed; on a hosted URL set `SETUP_TOKEN` and enter it there). After that everything is behind sign-in: email and password, optional two-factor codes, password reset by emailed link, invitations, roles, session management and an audit log (see SECURITY.md). With no email provider configured, reset and invite links are written to `data/outbox.log` so you can test locally.
 
 Commands: `npm test` (unit tests), `npm run lint`, `npm run build`.
 
@@ -27,7 +27,9 @@ Commands: `npm test` (unit tests), `npm run lint`, `npm run build`.
 | Real physical mailing address (CAN-SPAM) | `MAILING_ADDRESS` |
 | Postgres connection string (production) | `DATABASE_URL` |
 | Public https URL of the deployed app | `APP_BASE_URL` |
-| Random secret for signed opt-out links | `APP_SECRET` |
+| Random secret (required on Vercel; auto-generated locally) | `APP_SECRET` |
+| Scheduler secret (32+ random characters) | `CRON_SECRET` |
+| Hosted first-run claim code | `SETUP_TOKEN` |
 
 Target cities and categories are entered in the dashboard on each run.
 
@@ -54,5 +56,15 @@ Brand data lives in `config/brands.js` and is passed as a `brand` object to the 
 3. Deploy. Tables are created automatically on first use (`CREATE TABLE IF NOT EXISTS`).
 
 Mockup and opt-out links must be publicly reachable, so the app has to be hosted before real email goes out. Note that the in-memory rate limiter and send lock are per serverless instance.
+
+## Scheduled scans (Windows Task Scheduler)
+
+Campaigns are picked with buttons only (state, cities, business types, schedule). Open a campaign and the page shows the exact one-line command to register it, for example:
+
+```powershell
+.\scripts\register-task.ps1 -CampaignId 1 -Schedule Daily -Time 06:00
+```
+
+Add `CRON_SECRET` to `.env.local` first. The task calls the running app (`scripts/run-campaign.ps1`, logged to `data\scheduler.log`), so the app must be running at that time, for example `npm run build` then `npm run start` left open or started at logon. The result appears under Run history. Remove a job with `Unregister-ScheduledTask -TaskName "SiteScout campaign 1"`.
 
 Docs: [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md), [TESTING.md](TESTING.md), [CHANGELOG.md](CHANGELOG.md).

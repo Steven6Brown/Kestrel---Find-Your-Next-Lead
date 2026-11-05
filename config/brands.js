@@ -24,14 +24,15 @@ function buildAquila() {
   return {
     id: "aquila",
     name: "Aquila Digital LLC",
-    logo: null, // e.g. "/brands/aquila/logo.svg" once a logo file exists
-    // Flat color only. This is a neutral teal placeholder, not a confirmed brand color.
-    primaryColor: "#0F6B63",
+    logo: "/brands/aquila/logo.svg",
+    // Flat colors sampled from aquiladigital.net. Never gradients.
+    primaryColor: "#C08A2E",
+    darkColor: "#0B0E13",
     senderName: env("SENDER_NAME") || PLACEHOLDER.senderName,
     senderEmail: senderEmail || PLACEHOLDER.senderEmail,
     replyTo: env("REPLY_TO_EMAIL") || senderEmail || "",
     mailingAddress: env("MAILING_ADDRESS") || PLACEHOLDER.mailingAddress,
-    website: env("BRAND_WEBSITE"),
+    website: env("BRAND_WEBSITE") || "https://www.aquiladigital.net",
   };
 }
 

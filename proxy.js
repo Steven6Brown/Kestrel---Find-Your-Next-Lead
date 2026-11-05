@@ -1,40 +1,26 @@
 import { NextResponse } from "next/server";
 
-// Protects the dashboard and all server actions with HTTP Basic Auth.
-// Public paths (excluded in the matcher): hosted mockups, unsubscribe flow, legal pages.
-
-function safeEqual(a, b) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
+// First gate: anything outside the public paths needs a session cookie, otherwise the visitor
+// is sent to sign in. The cookie is only checked for presence here; every page and server
+// action validates the session against the database (lib/auth.js requireUser).
 export function proxy(request) {
-  const password = process.env.ADMIN_PASSWORD;
-  if (!password) {
-    if (process.env.NODE_ENV !== "production") return NextResponse.next();
-    return new NextResponse("Admin password is not configured.", { status: 503 });
+  if (request.cookies.get("ss_session")?.value) {
+    const res = NextResponse.next();
+    res.headers.set("Cache-Control", "no-store"); // signed-in pages are never cached
+    return res;
   }
-  const user = process.env.ADMIN_USER || "admin";
-  const header = request.headers.get("authorization") || "";
-  if (header.startsWith("Basic ")) {
-    try {
-      const decoded = atob(header.slice(6));
-      const i = decoded.indexOf(":");
-      if (i > -1 && safeEqual(decoded.slice(0, i), user) && safeEqual(decoded.slice(i + 1), password)) {
-        return NextResponse.next();
-      }
-    } catch {
-      /* fall through to 401 */
-    }
+  if (request.method === "GET" || request.method === "HEAD") {
+    const url = request.nextUrl.clone();
+    const next = request.nextUrl.pathname + request.nextUrl.search;
+    url.pathname = "/login";
+    url.search = next && next !== "/" ? `?next=${encodeURIComponent(next)}` : "";
+    return NextResponse.redirect(url);
   }
-  return new NextResponse("Authentication required.", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="SiteScout", charset="UTF-8"' },
-  });
+  return new NextResponse("Authentication required.", { status: 401 });
 }
 
+// Public: hosted mockups, unsubscribe, scheduler endpoint (bearer secret), sign-in and recovery
+// pages, legal pages, brand assets.
 export const config = {
-  matcher: ["/((?!m/|unsubscribe|api/unsubscribe|privacy|terms|accessibility|_next/|favicon.ico|robots.txt).*)"],
+  matcher: ["/((?!m/|unsubscribe|api/unsubscribe|api/cron|login|forgot|reset|accept|setup|privacy|terms|accessibility|brands/|_next/|favicon.ico|icon.svg|robots.txt).*)"],
 };

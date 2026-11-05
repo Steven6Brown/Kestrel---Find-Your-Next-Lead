@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth";
 import Flash from "@/components/Flash";
 import { addSuppressionAction } from "../actions";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
@@ -7,11 +8,12 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Opt-outs" };
 
 export default async function OptOuts({ searchParams }) {
+  await requireUser();
   const sp = await searchParams;
   const rows = await listSuppressions(DEFAULT_BRAND_ID);
   return (
     <div className="reveal">
-      <h1 className="text-4xl font-extrabold">Opt-outs</h1>
+      <h1 className="text-4xl font-semibold">Opt-outs</h1>
       <p className="mt-2 max-w-2xl text-muted">
         Addresses here are never emailed again. Unsubscribe link clicks are added automatically. If someone replies
         &quot;STOP&quot; or asks to be removed, add them here the same day. The legal limit is 10 days.
@@ -29,7 +31,7 @@ export default async function OptOuts({ searchParams }) {
       ) : (
         <table className="w-full text-left">
           <caption className="sr-only">Opted out addresses</caption>
-          <thead className="border-b-2 border-ink"><tr>
+          <thead className="border-b border-line"><tr>
             <th scope="col" className="p-3">Email</th><th scope="col" className="p-3">Reason</th><th scope="col" className="p-3">Date</th>
           </tr></thead>
           <tbody>

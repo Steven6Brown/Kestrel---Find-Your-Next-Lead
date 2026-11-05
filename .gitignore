@@ -8,3 +8,5 @@ data/
 *.log
 .vercel
 next-env.d.ts
+.next-build/
+.next-*/

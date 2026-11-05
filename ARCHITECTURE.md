@@ -7,7 +7,7 @@
 **Assumptions (low risk, reversible):**
 - Product name: **SiteScout** (`config/product.js`). The brief asked to pick one.
 - Postgres (Neon or Vercel Postgres) in production via `pg`. Local dev and tests use embedded PGlite (real Postgres in WASM, dev dependency) when `DATABASE_URL` is unset. All SQL is plain Postgres.
-- Dashboard protected by HTTP Basic Auth (`proxy.js`) rather than a login system.
+- Custom session authentication (no auth library) built on Node crypto primitives: scrypt, AES-GCM, HMAC, TOTP. Reasoning: one small app, no external identity provider required, every piece unit tested. SSO (OIDC or SAML) is the upgrade path if multiple organizations or enterprise customers arrive.
 - Social profiles and link-in-bio pages count as "no website".
 - Mockup accent color is a neutral teal placeholder, not a confirmed brand color.
 - Free OpenStreetMap (Nominatim + Overpass) is the default discovery source; Google Places is an optional paid provider (`DISCOVERY_PROVIDER`). Google Search pages are never scraped (Terms of Service).
@@ -15,6 +15,8 @@
 - OSM-sourced leads are marked by a `osm:` place id prefix and carry a verify-first warning and ODbL attribution.
 
 **Open questions:** sender identity and mailing address (env), target geography and categories, Aquila logo and colors, where to host for real sending, whether outreach targets include Canada or the EU (different consent law than CAN-SPAM; this app only implements CAN-SPAM basics and is not legal advice).
+
+**Auth scope decisions:** roles are owner, administrator, member, scoped per brand. Email verification is covered by the invitation link and first-run setup rather than a separate verify step. No self-service signup.
 
 **Out of scope for v1:** auto-send, multi-tenant logins, billing, a brand picker UI, email finding or enrichment, follow-up sequences, reply tracking.
 

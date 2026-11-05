@@ -1,11 +1,12 @@
+import { requireUser } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Flash from "@/components/Flash";
 import {
-  createDraftAction, draftStatusAction, saveContactAction, saveDraftAction, sendAction,
+  createDraftAction, draftStatusAction, saveContactAction, saveDraftAction, sendAction, siteCheckAction,
 } from "../../actions";
 import { DEFAULT_BRAND_ID, getBrand } from "@/config/brands";
-import { countSentToday, getDraftByLead, getLead } from "@/lib/store";
+import { countSentToday, getDraftByLead, getLead, outreachReady } from "@/lib/store";
 import { resolveBody, sendProblems } from "@/lib/email";
 import { mockupUrl } from "@/lib/tokens";
 
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Lead" };
 
 export default async function LeadPage({ params, searchParams }) {
+  await requireUser();
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const leadId = Number(id);
   const lead = Number.isInteger(leadId) ? await getLead(DEFAULT_BRAND_ID, leadId) : null;
@@ -20,20 +22,38 @@ export default async function LeadPage({ params, searchParams }) {
   const brand = getBrand(DEFAULT_BRAND_ID);
   const draft = await getDraftByLead(DEFAULT_BRAND_ID, leadId);
   const isNoSite = lead.bucket === "no_website";
+  const needsCheck = isNoSite && !outreachReady(lead);
+  const checkUrl = `https://www.google.com/search?${new URLSearchParams({ q: [lead.name, lead.city, lead.region].filter(Boolean).join(" ") })}`;
   const problems = draft ? await sendProblems({ lead, draft, brand, sentToday: await countSentToday(DEFAULT_BRAND_ID) }) : [];
   const preview = draft ? resolveBody(draft.body, { brand, email: lead.contact_email }) : "";
 
   return (
     <div className="reveal">
       <p><Link href={`/leads?bucket=${lead.bucket}`} className="inline-flex min-h-[44px] items-center underline underline-offset-4">Back to list</Link></p>
-      <h1 className="mt-2 text-4xl font-extrabold">{lead.name}</h1>
+      <h1 className="mt-2 text-4xl font-semibold">{lead.name}</h1>
       <div className="mt-4"><Flash sp={sp} /></div>
 
-      {lead.place_id.startsWith("osm:") && isNoSite && (
-        <p className="mb-4 border-2 border-warn bg-warn-bg p-3 text-warn">This lead came from OpenStreetMap. Before any outreach, search for the business yourself to confirm it really has no website.</p>
+      {needsCheck && (
+        <section aria-labelledby="verify-h" className="mb-6 border border-warn bg-warn-bg p-5 text-warn">
+          <h2 id="verify-h" className="text-xl font-semibold !text-warn">Check this lead first</h2>
+          <p className="mt-2">This came from OpenStreetMap, where a missing website often just means nobody added it. Search for the business yourself, then record what you found.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <a className="btn" href={checkUrl} target="_blank" rel="noopener noreferrer">Search the web for this business (opens a new tab)</a>
+            <form action={siteCheckAction}>
+              <input type="hidden" name="leadId" value={lead.id} />
+              <input type="hidden" name="verdict" value="confirmed_none" />
+              <button type="submit" className="btn btn-primary">Confirmed: no website</button>
+            </form>
+            <form action={siteCheckAction}>
+              <input type="hidden" name="leadId" value={lead.id} />
+              <input type="hidden" name="verdict" value="has_site" />
+              <button type="submit" className="btn">They have a website</button>
+            </form>
+          </div>
+        </section>
       )}
 
-      <dl className="grid gap-x-8 gap-y-3 border-2 border-ink bg-surface p-5 sm:grid-cols-2">
+      <dl className="grid gap-x-8 gap-y-3 border border-line bg-surface p-5 sm:grid-cols-2">
         {[
           ["Category", lead.category_label],
           ["City", [lead.city, lead.region].filter(Boolean).join(", ")],
@@ -55,8 +75,8 @@ export default async function LeadPage({ params, searchParams }) {
         )}
       </dl>
 
-      <section aria-labelledby="contact-h" className="mt-8 border-2 border-ink bg-surface p-5">
-        <h2 id="contact-h" className="text-2xl font-extrabold">Contact and notes</h2>
+      <section aria-labelledby="contact-h" className="mt-8 border border-line bg-surface p-5">
+        <h2 id="contact-h" className="text-2xl font-semibold">Contact and notes</h2>
         <p className="mt-1 text-muted">Google does not provide email addresses. Add one you found yourself before sending.</p>
         <form action={saveContactAction} className="mt-4 space-y-4">
           <input type="hidden" name="leadId" value={lead.id} />
@@ -83,15 +103,17 @@ export default async function LeadPage({ params, searchParams }) {
 
       {isNoSite ? (
         <>
-          <section aria-labelledby="mock-h" className="mt-8 border-2 border-ink bg-surface p-5">
-            <h2 id="mock-h" className="text-2xl font-extrabold">Mockup</h2>
+          <section aria-labelledby="mock-h" className="mt-8 border border-line bg-surface p-5">
+            <h2 id="mock-h" className="text-2xl font-semibold">Mockup</h2>
             <p className="mt-1 text-muted">Generated automatically from this lead&apos;s real listing data.</p>
             <p className="mt-3 break-all"><a className="underline underline-offset-4" href={`/m/${lead.mockup_token}`} target="_blank" rel="noopener noreferrer">{mockupUrl(lead.mockup_token)}</a> (opens in a new tab)</p>
           </section>
 
-          <section aria-labelledby="draft-h" className="mt-8 border-2 border-ink bg-surface p-5">
-            <h2 id="draft-h" className="text-2xl font-extrabold">Outreach draft</h2>
-            {!draft ? (
+          <section aria-labelledby="draft-h" className="mt-8 border border-line bg-surface p-5">
+            <h2 id="draft-h" className="text-2xl font-semibold">Outreach draft</h2>
+            {!draft && needsCheck ? (
+              <p className="mt-3 text-muted">Confirm the business has no website above to unlock outreach.</p>
+            ) : !draft ? (
               <form action={createDraftAction} className="mt-4">
                 <input type="hidden" name="leadId" value={lead.id} />
                 <button type="submit" className="btn btn-primary">Create draft</button>

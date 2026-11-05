@@ -5,6 +5,7 @@
 | Business name, category, address, city, phone, website, maps link | Google Places API or OpenStreetMap (externally sourced) | Find leads and build concept page | Postgres `leads` | Until you delete the rows; no delete UI yet |
 | Recipient email, notes | Typed by the operator | Send one reviewed email | `leads` | Same |
 | Email text and send status | Generated, then edited by the operator | Review and audit trail | `drafts` | Same |
+| Staff accounts: name, email, password hash, two-factor secret (encrypted), sign-in IP and device, audit events | Typed by the user or generated | Sign in, security, accountability | Postgres `users`, `sessions`, `audit_log` | Sessions until they expire or are revoked; audit log kept until you delete it |
 | Opted-out addresses | Unsubscribe link or manual entry | Never contact again | `suppressions` | Kept indefinitely on purpose |
 
 Processors: Google (Places), Resend (delivery), hosting provider. No analytics, no cookies besides HTTP Basic Auth. Data is not used for any other purpose.

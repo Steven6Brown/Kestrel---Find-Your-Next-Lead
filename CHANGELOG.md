@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+- Campaigns picked with buttons only, scheduled through Windows Task Scheduler scripts and a bearer-protected endpoint; run history; retries across Overpass mirrors; verify-before-outreach for OpenStreetMap leads.
+- Aquila Digital branding (colors, fonts, logo) across the app.
+- Full sign-in system: sessions, logout, password reset, invitations, roles, lockout, two-factor with recovery codes, session management, audit log. Replaces the shared Basic Auth password.
+
 ## 0.3.0
 - Free OpenStreetMap discovery source (default); Google Places now optional. Source-neutral email and mockup wording, OSM attribution, verify-first warning.
 

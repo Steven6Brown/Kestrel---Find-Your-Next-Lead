@@ -16,7 +16,7 @@ export default async function Unsubscribe({ searchParams }) {
 
   return (
     <PublicShell>
-      <h1 className="text-4xl font-extrabold">Unsubscribe</h1>
+      <h1 className="text-4xl font-semibold">Unsubscribe</h1>
       {valid ? (
         <>
           <p className="mt-4 text-lg">

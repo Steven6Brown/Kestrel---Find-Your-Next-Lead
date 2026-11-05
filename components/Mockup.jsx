@@ -29,6 +29,7 @@ function DraftTag() {
 
 export default function Mockup({ lead, brand }) {
   const accent = HEX.test(brand.primaryColor || "") ? brand.primaryColor : "#0f6b63";
+  const dark = HEX.test(brand.darkColor || "") ? brand.darkColor : "#1b1f23";
   const onAccent = readableOn(accent);
   const copy = categoryCopy(lead);
   const tel = telHref(lead.phone);
@@ -38,17 +39,21 @@ export default function Mockup({ lead, brand }) {
   return (
     <div className="min-h-screen bg-[#fbfaf6] text-[#1b1f23]">
       {/* Concept banner: honest framing, always visible */}
-      <div style={{ background: accent, color: onAccent }} className="px-4 py-3 text-sm">
-        <p className="mx-auto max-w-5xl">
-          <strong>Concept preview.</strong> This is a quick idea of what a website for {lead.name} could look
+      <div style={{ background: dark, color: "#ffffff", borderBottom: `3px solid ${accent}` }} className="px-4 py-3 text-sm">
+        <p className="mx-auto flex max-w-5xl items-start gap-3">
+          {brand.logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={brand.logo} alt="" width={28} height={28} className="mt-0.5 h-7 w-7 shrink-0" />
+          ) : null}
+          <span><strong style={{ color: accent === "#C08A2E" ? "#E0AC4C" : accent }}>Concept preview.</strong> This is a quick idea of what a website for {lead.name} could look
           like, made by {brand.name} from public business listing details. It is not an official site and
-          anything marked as a placeholder is not confirmed.
+          anything marked as a placeholder is not confirmed.</span>
         </p>
       </div>
 
       <header className="border-b-2 border-[#1b1f23] bg-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-4">
-          <p className="font-[family-name:var(--font-archivo)] text-xl font-extrabold">{lead.name}</p>
+          <p className="font-[family-name:var(--font-space)] text-xl font-semibold">{lead.name}</p>
           <nav aria-label="Concept sections">
             <ul className="flex flex-wrap gap-1 text-sm font-semibold">
               {[["About", "#about"], ["Services", "#services"], ["Visit", "#visit"]].map(([t, h]) => (
@@ -70,7 +75,7 @@ export default function Mockup({ lead, brand }) {
               {category}
               {where ? `, ${where}` : ""}
             </p>
-            <h1 id="hero-h" className="mt-3 font-[family-name:var(--font-archivo)] text-4xl font-extrabold leading-tight md:text-5xl">
+            <h1 id="hero-h" className="mt-3 font-[family-name:var(--font-space)] text-4xl font-semibold leading-tight md:text-5xl">
               {lead.name}
             </h1>
             <p className="mt-4 text-lg text-[#2d343b]">
@@ -98,7 +103,7 @@ export default function Mockup({ lead, brand }) {
 
         <section id="about" className="border-t-2 border-[#1b1f23] bg-white" aria-labelledby="about-h">
           <div className="mx-auto max-w-5xl px-4 py-12">
-            <h2 id="about-h" className="font-[family-name:var(--font-archivo)] text-3xl font-extrabold">
+            <h2 id="about-h" className="font-[family-name:var(--font-space)] text-3xl font-semibold">
               About
             </h2>
             <p className="mt-4 max-w-2xl text-lg leading-relaxed">
@@ -110,7 +115,7 @@ export default function Mockup({ lead, brand }) {
 
         <section id="services" className="border-t-2 border-[#1b1f23]" aria-labelledby="svc-h">
           <div className="mx-auto max-w-5xl px-4 py-12">
-            <h2 id="svc-h" className="font-[family-name:var(--font-archivo)] text-3xl font-extrabold">
+            <h2 id="svc-h" className="font-[family-name:var(--font-space)] text-3xl font-semibold">
               Services
             </h2>
             <p className="mt-2 text-[#2d343b]">
@@ -120,7 +125,7 @@ export default function Mockup({ lead, brand }) {
             <ol className="mt-6 divide-y-2 divide-[#1b1f23] border-y-2 border-[#1b1f23]">
               {copy.items.map((item, i) => (
                 <li key={item} className="flex items-baseline gap-5 py-5">
-                  <span className="font-[family-name:var(--font-archivo)] text-3xl font-extrabold" aria-hidden="true">
+                  <span className="font-[family-name:var(--font-space)] text-3xl font-semibold" aria-hidden="true">
                     {String(i + 1).padStart(2, "0")}
                   </span>
                   <span className="text-lg font-semibold">{item}</span>
@@ -133,7 +138,7 @@ export default function Mockup({ lead, brand }) {
         <section id="visit" className="border-t-2 border-[#1b1f23] bg-white" aria-labelledby="visit-h">
           <div className="mx-auto grid max-w-5xl gap-8 px-4 py-12 md:grid-cols-2">
             <div>
-              <h2 id="visit-h" className="font-[family-name:var(--font-archivo)] text-3xl font-extrabold">
+              <h2 id="visit-h" className="font-[family-name:var(--font-space)] text-3xl font-semibold">
                 Visit or contact
               </h2>
               <dl className="mt-6 space-y-4">
@@ -158,7 +163,7 @@ export default function Mockup({ lead, brand }) {
         </section>
       </main>
 
-      <footer className="border-t-2 border-[#1b1f23] bg-[#1b1f23] px-4 py-8 text-sm text-white">
+      <footer style={{ background: dark, borderTop: `3px solid ${accent}` }} className="px-4 py-8 text-sm text-white">
         <div className="mx-auto max-w-5xl space-y-2">
           <p>
             Concept only, prepared by {brand.name}. Not affiliated with {lead.name}. Built from public

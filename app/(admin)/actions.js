@@ -7,6 +7,7 @@ import { DEFAULT_BRAND_ID, getBrand } from "@/config/brands";
 import * as store from "@/lib/store";
 import { after } from "next/server";
 import { startRun } from "@/lib/runner";
+import { startVerification } from "@/lib/verify";
 import { areaCampaignName, validateAreaCampaign } from "@/lib/campaigns";
 import { buildDraft, isValidEmail, sendProblems, sendViaResend } from "@/lib/email";
 import { mockupUrl } from "@/lib/tokens";
@@ -197,4 +198,14 @@ export async function draftFilteredAction(formData) {
   for (const lead of leads) await makeDraft(lead);
   revalidatePath("/", "layout");
   done("/queue", leads.length ? `Created ${leads.length} draft(s) from your filter. Review them here before anything is sent.` : "No ready leads in this filter need a draft. Leads from OpenStreetMap must be checked first.", leads.length ? "ok" : "bad");
+}
+
+/** Look up every unverified lead in the free open dataset, in the background. */
+export async function verifyWebsitesAction() {
+  await requireUser();
+  const r = await startVerification({ brandId: BRAND });
+  if (r.skipped) done("/leads", r.reason, "bad");
+  after(() => r.done);
+  revalidatePath("/", "layout");
+  done("/leads", "Website check started. Progress shows below and on the Scanner page under Recent runs. It usually takes a few minutes.");
 }

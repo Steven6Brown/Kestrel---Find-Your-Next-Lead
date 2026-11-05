@@ -2,9 +2,10 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import Flash from "@/components/Flash";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
-import { countLeadsFiltered, leadFacets, searchLeads } from "@/lib/store";
+import AutoRefresh from "@/components/AutoRefresh";
+import { countLeadsFiltered, countUnverified, leadFacets, runningVerification, searchLeads } from "@/lib/store";
 import { CHECK, PAGE_SIZE, PHONE, SITE, STAGE_FILTER, STATUS, hrefWith, parseFilters } from "@/lib/leadfilters";
-import { draftFilteredAction, siteCheckAction } from "../actions";
+import { draftFilteredAction, siteCheckAction, verifyWebsitesAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Leads" };
@@ -35,6 +36,7 @@ export default async function Leads({ searchParams }) {
   await requireUser();
   const sp = await searchParams;
   const f = parseFilters(sp);
+  const [unverified, running] = await Promise.all([countUnverified(DEFAULT_BRAND_ID), runningVerification(DEFAULT_BRAND_ID)]);
   const [total, rows, facets] = await Promise.all([
     countLeadsFiltered(DEFAULT_BRAND_ID, f),
     searchLeads(DEFAULT_BRAND_ID, f, { limit: PAGE_SIZE, offset: (f.page - 1) * PAGE_SIZE }),
@@ -50,6 +52,23 @@ export default async function Leads({ searchParams }) {
       <h1 className="mt-1 text-4xl font-semibold">Every business Kestrel has found</h1>
       <p className="mt-2 max-w-2xl text-muted">Narrow the list with the buttons, then create outreach drafts or download the result. Nothing is emailed from here.</p>
       <div className="mt-4"><Flash sp={sp} /></div>
+
+      <AutoRefresh active={!!running} />
+      <section aria-labelledby="ver-h" className="card mb-6 p-5">
+        <h2 id="ver-h" className="text-2xl font-semibold">Check who really has no website</h2>
+        <p className="mt-1 text-muted">
+          Businesses from OpenStreetMap often look website-less only because nobody added the website there. This looks each one up in Overture Maps, a free open business directory, and moves any that already have a website into the &quot;Has a website&quot; list. It is free and needs no account.
+        </p>
+        <p className="mt-2 text-ink">
+          {running
+            ? `Checking now: ${running.searches} of ${running.total_searches} areas done, ${running.found} businesses checked, ${running.has_website} found with a website so far.`
+            : `${unverified.toLocaleString()} business(es) are still unverified.`}
+        </p>
+        <form action={verifyWebsitesAction} className="mt-3">
+          <button type="submit" className="btn btn-primary" disabled={!!running || unverified === 0}>{running ? "Checking..." : "Check websites (free)"}</button>
+        </form>
+        <p className="mt-2 text-sm text-muted">Not finding a business there proves nothing, so it stays unverified until you check it yourself.</p>
+      </section>
 
       <section aria-labelledby="filters-h" className="card space-y-5 p-5">
         <h2 id="filters-h" className="sr-only">Filters</h2>
@@ -128,7 +147,7 @@ export default async function Leads({ searchParams }) {
                       <td className="p-3">{l.city || "Not listed"}</td>
                       <td className="p-3">{l.phone || "Not listed"}</td>
                       <td className="p-3 break-all">
-                        {l.bucket === "no_website" ? (l.website_kind === "social" ? "Social page only" : "None listed") : l.website}
+                        {l.bucket === "no_website" ? (l.website_kind === "social" ? <>Social page only{l.website ? <><br /><span className="text-muted">{l.website}</span></> : null}</> : needsCheck ? "Not listed (unverified)" : "None listed") : <>{l.website}{l.website_source === "overture" ? <span className="block text-xs text-muted">Found in Overture Maps</span> : null}</>}
                       </td>
                       <td className="p-3">
                         {l.status === "do_not_contact" ? "Do not contact" : needsCheck ? (

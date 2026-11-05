@@ -60,3 +60,6 @@
 - Mockup is rendered on demand from the lead row, so there is no per-lead deploy to manage. The token is 128 random bits.
 - Unsubscribe link in a draft is a placeholder resolved at send time because the signature is bound to the recipient address.
 - Server actions validate with zod at the boundary; the send action re-checks every guardrail even though the button is disabled in the UI.
+
+## Website verification (free)
+OpenStreetMap often lacks website tags, so a scanned business can look website-less when it is not. `lib/verify.js` groups unverified OSM leads by search area, geocodes the area for a bounding box, and reads Overture Maps places in that box (`lib/overture.js`, DuckDB reading public parquet files, no key or billing). `lib/matchsites.js` holds the pure matching rules (phone plus similar name or nearby; very similar name and nearby; very similar name in the same city when coordinates are missing). A found website sets bucket has_website with website_source overture; a social page stays no_website with kind social; nothing found only stamps overture_checked_at (rechecked after 30 days). People's confirmed verdicts and already-checked leads are never changed, and rescans do not erase a found website. Runs are recorded in `runs` with trigger verify.

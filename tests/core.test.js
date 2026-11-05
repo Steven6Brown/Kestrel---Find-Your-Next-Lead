@@ -1282,3 +1282,182 @@ test("ics export escapes text, folds long lines, and cannot inject events", asyn
   const unfolded = out.replace(/\r\n /g, "");
   assert.ok(unfolded.includes("é"), "multi-byte characters survive folding intact");
 });
+
+// ---------------- website verification (free, Overture Maps) ----------------
+
+test("name and url helpers for matching", async () => {
+  const m = await import("../lib/matchsites.js");
+  assert.deepEqual(m.nameTokens("Joe's Pizza & Subs, LLC"), ["joes", "pizza", "subs"]);
+  assert.equal(m.normName("The Bella Pizza Co."), "bellapizza");
+  assert.equal(m.nameSimilarity("Bella Pizza", "bella  pizza!"), 1);
+  assert.equal(m.nameSimilarity("The Citizen Pie", "Citizen Pie"), 1, "filler words ignored");
+  assert.ok(m.nameSimilarity("Citizen Pie", "Citizen Pie Tremont") >= 0.6 && m.nameSimilarity("Citizen Pie", "Citizen Pie Tremont") < 0.8);
+  assert.ok(m.nameSimilarity("Pat's Barber Shop", "Rosa's Nail Salon") < 0.2);
+  assert.equal(m.nameSimilarity("", "x"), 0);
+  assert.equal(m.digits10("+1 (330) 794-1234"), "3307941234");
+  assert.equal(Math.round(m.distanceMeters(41.5, -81.7, 41.5, -81.7)), 0);
+  assert.ok(Math.abs(m.distanceMeters(41.5, -81.7, 41.5, -81.6988) - 100) < 5, "about 100 metres");
+  assert.equal(m.normalizeUrl("www.example.com/menu"), "https://www.example.com/menu");
+  assert.equal(m.normalizeUrl("http://Example.com/#top"), "http://example.com/");
+  for (const bad of ["", "javascript:alert(1)", "ftp://x.com", "http://localhost", "https://u:p@x.com", "not a url", "x".repeat(400)]) assert.equal(m.normalizeUrl(bad), null, bad);
+  assert.deepEqual(m.bestWebsite({ websites: ["https://facebook.com/x", "joes.com"], socials: [] }), { url: "https://joes.com/", kind: "site" });
+  assert.deepEqual(m.bestWebsite({ websites: [], socials: ["https://www.facebook.com/joes"] }), { url: "https://www.facebook.com/joes", kind: "social" });
+  assert.equal(m.bestWebsite({ websites: [], socials: [] }), null);
+  assert.equal(m.locationOfLead({ search_label: "shops in Cleveland, OH" }), "Cleveland, OH");
+  assert.equal(m.locationOfLead({ search_label: "", city: "Akron", region: "OH" }), "Akron, OH");
+  assert.equal(m.locationOfLead({}), null);
+});
+
+test("matching is conservative: only the same business counts", async () => {
+  const { matchLead } = await import("../lib/matchsites.js");
+  const cand = (o) => ({ name: "", city: "", phones: [], websites: ["https://x.com"], socials: [], lat: null, lon: null, confidence: 0.8, ...o });
+  const lead = { name: "Citizen Pie", city: "Cleveland", phone: "(216) 555-0100", lat: 41.4800, lon: -81.7000 };
+  // same phone and name
+  assert.equal(matchLead(lead, [cand({ name: "Citizen Pie", phones: ["+12165550100"] })]).how, "phone");
+  // same phone, name differs a lot and far away: a shared line is not enough
+  assert.equal(matchLead(lead, [cand({ name: "Totally Different Law Firm", phones: ["+12165550100"], lat: 41.9, lon: -81.9 })]), null);
+  // same phone, different name but at the same spot: accepted
+  assert.equal(matchLead(lead, [cand({ name: "Totally Different Name", phones: ["+12165550100"], lat: 41.4801, lon: -81.7001 })]).how, "phone");
+  // name and location
+  assert.equal(matchLead(lead, [cand({ name: "The Citizen Pie", lat: 41.4801, lon: -81.7002 })]).how, "name and location");
+  // same name but in another part of town (a different branch): rejected
+  assert.equal(matchLead(lead, [cand({ name: "Citizen Pie", lat: 41.52, lon: -81.62 })]), null);
+  // no coordinates on the lead: fall back to the same city
+  const noCoords = { name: "Citizen Pie", city: "Cleveland", phone: "" };
+  assert.equal(matchLead(noCoords, [cand({ name: "Citizen Pie", city: "Cleveland" })]).how, "name and city");
+  assert.equal(matchLead(noCoords, [cand({ name: "Citizen Pie", city: "Akron" })]), null, "same name, different city");
+  assert.equal(matchLead(noCoords, [cand({ name: "Citizen Pie", city: "" })]), null, "no location evidence at all");
+  assert.equal(matchLead(noCoords, [cand({ name: "Citizen Pizza Palace", city: "Cleveland" })]), null, "similar but not the same name");
+  // the best of several candidates wins, phone first
+  const best = matchLead(lead, [
+    cand({ name: "Citizen Pie", lat: 41.4801, lon: -81.7001, confidence: 0.9 }),
+    cand({ name: "Citizen Pie", phones: ["2165550100"], lat: 41.4801, lon: -81.7001, confidence: 0.5, websites: ["https://right.com"] }),
+  ]);
+  assert.equal(best.how, "phone");
+  assert.deepEqual(best.candidate.websites, ["https://right.com"]);
+  assert.equal(matchLead(lead, []), null);
+});
+
+test("overture access: release discovery, safe query building, rows", async () => {
+  const o = await import("../lib/overture.js");
+  const xml = "<ListBucketResult><CommonPrefixes><Prefix>release/2026-09-23.0/</Prefix></CommonPrefixes><CommonPrefixes><Prefix>release/2026-10-21.0/</Prefix></CommonPrefixes><CommonPrefixes><Prefix>release/2026-09-23.1/</Prefix></CommonPrefixes></ListBucketResult>";
+  assert.equal(await o.latestRelease({ fetchImpl: async () => ({ ok: true, text: async () => xml }), env: {} }), "2026-10-21.0");
+  assert.equal(await o.latestRelease({ env: { OVERTURE_RELEASE: "2026-01-01.0" } }), "2026-01-01.0", "override, no network");
+  await assert.rejects(o.latestRelease({ fetchImpl: async () => ({ ok: false }), env: {} }), /Could not reach/);
+  await assert.rejects(o.latestRelease({ fetchImpl: async () => ({ ok: true, text: async () => "<x/>" }), env: {} }), /no data releases/);
+  const q = o.buildPlacesQuery("2026-10-21.0", { west: -81.8, east: -81.5, south: 41.3, north: 41.6 });
+  assert.ok(q.includes("release/2026-10-21.0/theme=places") && q.includes("BETWEEN -81.8 AND -81.5"));
+  assert.throws(() => o.buildPlacesQuery("2026-10-21.0'; DROP TABLE x;--", { west: 0, east: 1, south: 0, north: 1 }), /Bad release/);
+  assert.throws(() => o.buildPlacesQuery("2026-10-21.0", { west: "1; DROP", east: 1, south: 0, north: 1 }), /Bad coordinates/);
+  assert.throws(() => o.buildPlacesQuery("2026-10-21.0", { west: 999, east: 1, south: 0, north: 1 }), /Bad coordinates/);
+  assert.deepEqual(o.expandBox({ south: 1, north: 2, west: 3, east: 4 }, 0.5), { south: 0.5, north: 2.5, west: 2.5, east: 4.5 });
+  const row = o.normalizeRow({ name: "X", websites: ["a.com", 5, null], socials: null, phones: ["1"], city: null, lon: "-81.5", lat: 41.5, confidence: "0.7" });
+  assert.deepEqual(row.websites, ["a.com"]);
+  assert.deepEqual(row.socials, []);
+  assert.equal(row.lon, -81.5);
+  assert.equal(row.confidence, 0.7);
+});
+
+async function seedVerifyLead(name, extra = {}) {
+  const place = { place_id: "osm:node/" + name.replace(/\W/g, ""), name, category: "bakery", category_label: "Bakery", address: "", city: "Veriton", region: "VT", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website", lat: 41.5, lon: -81.5, ...extra };
+  const r = await store.upsertPlace("aquila", place, "shops in Veriton, VT");
+  return r.id;
+}
+
+test("verification stores what the directory knows and respects people's verdicts", async () => {
+  const withSite = await seedVerifyLead("Sunny Bakery Verify");
+  const socialOnly = await seedVerifyLead("Social Only Cafe Verify");
+  const unknown = await seedVerifyLead("Nobody Knows Us Verify");
+  const humanSaidNone = await seedVerifyLead("Human Verdict Verify");
+  await store.setSiteCheck("aquila", humanSaidNone, "confirmed_none");
+  assert.equal(await store.applyWebsiteVerification("aquila", withSite, { url: "https://sunny.example/", kind: "site", source: "overture" }), "site");
+  assert.equal(await store.applyWebsiteVerification("aquila", socialOnly, { url: "https://www.facebook.com/socialonly", kind: "social", source: "overture" }), "social");
+  assert.equal(await store.applyWebsiteVerification("aquila", unknown, null), "none");
+  assert.equal(await store.applyWebsiteVerification("aquila", humanSaidNone, { url: "https://wrong.example/", kind: "site" }), "site", "returns site but changes nothing");
+  const a = await store.getLead("aquila", withSite);
+  assert.equal(a.bucket, "has_website");
+  assert.equal(a.website, "https://sunny.example/");
+  assert.equal(a.website_source, "overture");
+  assert.equal(a.site_check, "has_site");
+  assert.ok(a.verified_at);
+  const b = await store.getLead("aquila", socialOnly);
+  assert.equal(b.bucket, "no_website");
+  assert.equal(b.website_kind, "social");
+  assert.equal((await store.getLead("aquila", unknown)).bucket, "no_website");
+  assert.ok((await store.getLead("aquila", unknown)).overture_checked_at, "looked up, so not checked again for a while");
+  const h = await store.getLead("aquila", humanSaidNone);
+  assert.equal(h.bucket, "no_website", "a person's confirmed verdict is never overridden");
+  assert.equal(h.website, "");
+  // a rescan must not erase a website the directory found
+  await store.upsertPlace("aquila", { place_id: "osm:node/SunnyBakeryVerify", name: "Sunny Bakery Verify", category: "bakery", category_label: "Bakery", address: "", city: "Veriton", region: "VT", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website", lat: 41.5, lon: -81.5 }, "shops in Veriton, VT");
+  const again = await store.getLead("aquila", withSite);
+  assert.equal(again.bucket, "has_website");
+  assert.equal(again.website, "https://sunny.example/");
+  assert.equal(again.lat, 41.5, "coordinates stored");
+});
+
+test("the verification run groups by area, matches, records outcomes, and stays safe", async () => {
+  const v = await import("../lib/verify.js");
+  const hit = await seedVerifyLead("Alpha Donuts Verify2", { lat: 41.6, lon: -81.6 });
+  const miss = await seedVerifyLead("Beta Tacos Verify2", { lat: 41.61, lon: -81.61 });
+  const far = await seedVerifyLead("Gamma Grill Verify2", { lat: 41.62, lon: -81.62 });
+  const calls = [];
+  const geocodeFn = async (loc) => { calls.push(loc); if (loc === "Nowhere, ZZ") throw new Error("not found"); return { box: { south: 41.5, north: 41.7, west: -81.7, east: -81.5 } }; };
+  const fetchPlacesFn = async (box) => {
+    calls.push("box " + box.south.toFixed(2));
+    return [
+      { name: "Alpha Donuts Verify2", city: "Veriton", phones: [], websites: ["alphadonuts.example"], socials: [], lat: 41.6001, lon: -81.6001, confidence: 0.9 },
+      { name: "Gamma Grill Verify2", city: "Veriton", phones: [], websites: ["gammagrill.example"], socials: [], lat: 41.9, lon: -81.9, confidence: 0.9 }, // same name, other town
+    ];
+  };
+  const progress = [];
+  const s = await v.verifyWebsites({ brandId: "aquila", geocodeFn, fetchPlacesFn, onProgress: (p) => progress.push(p.attempted) });
+  assert.ok(calls.filter((c) => c === "Veriton, VT").length === 1, "one lookup per area, not per lead");
+  assert.equal(s.foundSite >= 1, true);
+  assert.equal((await store.getLead("aquila", hit)).website, "https://alphadonuts.example/");
+  assert.equal((await store.getLead("aquila", hit)).bucket, "has_website");
+  assert.equal((await store.getLead("aquila", miss)).bucket, "no_website", "not in the directory: stays unverified");
+  assert.equal((await store.getLead("aquila", far)).bucket, "no_website", "same name far away is a different business");
+  assert.ok(progress.length >= 2 && progress[0] === 0);
+  // leads already looked up are not looked up again
+  const before = calls.length;
+  await v.verifyWebsites({ brandId: "aquila", geocodeFn, fetchPlacesFn });
+  assert.equal(calls.length, before, "nothing new to check");
+  // an area that fails is reported and does not stop the others
+  await store.upsertPlace("aquila", { place_id: "osm:node/NoWhereLead", name: "Lost Lead Verify3", category: "bakery", category_label: "Bakery", address: "", city: "X", region: "ZZ", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website" }, "shops in Nowhere, ZZ");
+  const bad = await v.verifyWebsites({ brandId: "aquila", geocodeFn, fetchPlacesFn });
+  assert.equal(bad.errors.length, 1);
+  assert.match(bad.errors[0], /Nowhere, ZZ/);
+  // deadline
+  await seedVerifyLead("Late Lead Verify4");
+  await store.upsertPlace("aquila", { place_id: "osm:node/LateLead2", name: "Late Two Verify4", category: "bakery", category_label: "Bakery", address: "", city: "Lateville", region: "LV", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website" }, "shops in Lateville, LV");
+  const late = await v.verifyWebsites({ brandId: "aquila", geocodeFn, fetchPlacesFn, deadlineMs: -1 });
+  assert.match(late.stopped, /minute limit/);
+  // brand isolation
+  assert.equal((await store.unverifiedLeads("other")).length, 0);
+  assert.equal(await store.countUnverified("other"), 0);
+});
+
+test("starting a verification records a run and refuses a second at the same time", async () => {
+  const v = await import("../lib/verify.js");
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const verify = async ({ onProgress }) => { await onProgress({ areas: 3, attempted: 1, checked: 10, foundSite: 4, notFound: 6, errors: [], stopped: null }); await gate; return { areas: 3, attempted: 3, checked: 30, foundSite: 12, foundSocial: 1, notFound: 17, errors: [], stopped: null }; };
+  const r1 = await v.startVerification({ brandId: "aquila", verify });
+  assert.ok(r1.runId);
+  const r2 = await v.startVerification({ brandId: "aquila", verify });
+  assert.ok(r2.skipped, "no second check while one is running");
+  assert.equal((await store.runningVerification("aquila")).id, r1.runId);
+  release();
+  await r1.done;
+  const run = (await store.listRuns("aquila")).find((x) => x.id === r1.runId);
+  assert.equal(run.status, "done");
+  assert.equal(run.trigger, "verify");
+  assert.equal(run.campaign_name, "Website verification");
+  assert.equal(run.found, 30);
+  assert.equal(run.has_website, 12);
+  assert.equal(await store.runningVerification("aquila"), null);
+  const failed = await v.startVerification({ brandId: "aquila", verify: async () => { throw new Error("duckdb missing"); } });
+  await failed.done;
+  assert.equal((await store.listRuns("aquila")).find((x) => x.id === failed.runId).status, "error");
+});

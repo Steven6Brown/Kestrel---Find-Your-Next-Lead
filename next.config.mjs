@@ -20,7 +20,7 @@ const nextConfig = {
   poweredByHeader: false,
   // Lets you build while a dev server is running: NEXT_DIST_DIR=.next-build npm run build
   distDir: process.env.NEXT_DIST_DIR || ".next",
-  serverExternalPackages: ["pg", "@electric-sql/pglite"],
+  serverExternalPackages: ["pg", "@electric-sql/pglite", "@duckdb/node-api", "@duckdb/node-bindings"],
   reactStrictMode: true,
   async headers() {
     // Account and recovery pages: never cached, and links with tokens never leak via Referer.

@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.0 (branch crm-core)
+- Free website check: looks each unverified OpenStreetMap lead up in Overture Maps (open data, no account or billing) and moves leads that already have a website out of the no-website list. Social-only pages stay as "Social page only". Leads stay unverified when nothing is found. Leads now store coordinates.
+
 ## 1.1.0 (branch crm-core)
 - Calendar page with month grid, day panel, scheduling, and an .ics download for Google Calendar. GUIDE.md added.
 

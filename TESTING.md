@@ -27,7 +27,11 @@ Unit tests (42 in total) cover stages and the status sync, manual contacts witho
 ## Calendar (performed)
 61 unit tests in total. The newest cover the month grid (including year boundaries, months starting on every weekday, no repeated days), month parameter validation, per-day assembly and ordering, hidden cancelled meetings, scheduled scan days, money only for managers, brand isolation, contact choices, and the .ics export (escaping, folding, UTC, injection attempt, multi-byte characters). In the browser: today highlighted, items in cells, scheduling a meeting from the day panel, the .ics download, month navigation and bad parameter fallback, and the phone layout (no sideways scroll, list view).
 
+## Website verification (performed)
+67 unit tests in total. New ones cover name and URL cleaning, conservative matching (same phone, same name nearby, same name in another part of town rejected, city fallback), release lookup and query safety (injection attempts rejected), storing results, a person's confirmed verdict never overridden, rescans not erasing a found website, one lookup per area, the time limit, brand isolation, and the run record with no double start. Against a scratch copy of the real leads database and the live dataset: 274 unverified leads, 108 found with a real website, 23 social page only, 143 not found, no errors. A sample of 25 matches looked right; some are chain store pages or directory listings (for example a salon chain location page), which count as "has a website" but are not always the business's own site. Not clicked through in the browser yet.
+
 ## Not performed
+- Overture Maps license and attribution terms were not confirmed; check them before relying on this or publishing results.
 - Importing the .ics file into Google Calendar itself; daylight saving boundaries on the calendar; keyboard and screen reader checks of the calendar.
 - Any call to the real PayPal sandbox. The request bodies follow PayPal's documented examples and omit optional fields; PayPal may ask for more (for example invoicer details) when it sees a real request.
 - Webhooks, cancelling or refunding invoices, live mode, invoice screens at phone width, keyboard and screen reader checks.

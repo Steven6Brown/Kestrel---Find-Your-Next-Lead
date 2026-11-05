@@ -130,9 +130,9 @@ export default async function Overview({ searchParams }) {
                   <tr key={r.id} className="border-b border-line align-top last:border-b-0">
                     <td className="p-3">{fmt(r.started_at)}</td>
                     <td className="p-3">{r.campaign_name}</td>
-                    <td className="p-3">{r.trigger === "schedule" ? "Scheduled" : "Manual"}</td>
-                    <td className="p-3"><StatusPill status={r.status} />{r.status === "running" ? <span className="ml-2 text-sm text-muted">{r.searches} of {r.total_searches} searches, {r.found} found so far</span> : null}{r.error ? <p className="mt-1 text-sm text-muted">{r.error}</p> : null}</td>
-                    <td className="p-3">{r.created} of {r.found} found</td>
+                    <td className="p-3">{r.trigger === "schedule" ? "Scheduled" : r.trigger === "verify" ? "Website check" : "Manual"}</td>
+                    <td className="p-3"><StatusPill status={r.status} />{r.status === "running" ? <span className="ml-2 text-sm text-muted">{r.searches} of {r.total_searches} {r.trigger === "verify" ? "areas" : "searches"}, {r.found} {r.trigger === "verify" ? "checked" : "found"} so far</span> : null}{r.error ? <p className="mt-1 text-sm text-muted">{r.error}</p> : null}</td>
+                    <td className="p-3">{r.trigger === "verify" ? `${r.found} checked, ${r.has_website} have a website` : `${r.created} of ${r.found} found`}</td>
                   </tr>
                 ))}
               </tbody>

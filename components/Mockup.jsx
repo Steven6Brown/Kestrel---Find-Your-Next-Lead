@@ -1,0 +1,177 @@
+import { categoryCopy, telHref, readableOn } from "@/lib/mockupCopy";
+
+// Phase 2 mockup. Takes `lead` (real retrieved data) and `brand` (who made it).
+// Nothing here names a company or color; the accent color is the brand's flat primary.
+// Layout rules: no gradients, no purple, no three-card row, no stock photos,
+// no lorem ipsum, no invented facts. Unknowns are marked placeholders.
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+function Placeholder({ label, className = "" }) {
+  return (
+    <div
+      role="img"
+      aria-label={label}
+      className={`flex items-center justify-center border-2 border-dashed border-[#4b5560] bg-[#e9e6dc] p-6 text-center text-sm font-semibold text-[#2d343b] ${className}`}
+    >
+      {label}
+    </div>
+  );
+}
+
+function DraftTag() {
+  return (
+    <span className="ml-2 inline-block rounded border border-[#4b5560] px-2 py-0.5 align-middle text-xs font-semibold text-[#2d343b]">
+      Draft copy
+    </span>
+  );
+}
+
+export default function Mockup({ lead, brand }) {
+  const accent = HEX.test(brand.primaryColor || "") ? brand.primaryColor : "#0f6b63";
+  const onAccent = readableOn(accent);
+  const copy = categoryCopy(lead);
+  const tel = telHref(lead.phone);
+  const where = [lead.city, lead.region].filter(Boolean).join(", ");
+  const category = lead.category_label || "Local business";
+
+  return (
+    <div className="min-h-screen bg-[#fbfaf6] text-[#1b1f23]">
+      {/* Concept banner: honest framing, always visible */}
+      <div style={{ background: accent, color: onAccent }} className="px-4 py-3 text-sm">
+        <p className="mx-auto max-w-5xl">
+          <strong>Concept preview.</strong> This is a quick idea of what a website for {lead.name} could look
+          like, made by {brand.name} from public Google listing details. It is not an official site and
+          anything marked as a placeholder is not confirmed.
+        </p>
+      </div>
+
+      <header className="border-b-2 border-[#1b1f23] bg-white">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-4">
+          <p className="font-[family-name:var(--font-archivo)] text-xl font-extrabold">{lead.name}</p>
+          <nav aria-label="Concept sections">
+            <ul className="flex flex-wrap gap-1 text-sm font-semibold">
+              {[["About", "#about"], ["Services", "#services"], ["Visit", "#visit"]].map(([t, h]) => (
+                <li key={h}>
+                  <a href={h} className="inline-flex min-h-[44px] items-center px-3 underline-offset-4 hover:underline">
+                    {t}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </div>
+      </header>
+
+      <main id="main">
+        <section className="mx-auto grid max-w-5xl gap-8 px-4 py-12 md:grid-cols-2 md:items-center md:py-16" aria-labelledby="hero-h">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-wide text-[#2d343b]">
+              {category}
+              {where ? `, ${where}` : ""}
+            </p>
+            <h1 id="hero-h" className="mt-3 font-[family-name:var(--font-archivo)] text-4xl font-extrabold leading-tight md:text-5xl">
+              {lead.name}
+            </h1>
+            <p className="mt-4 text-lg text-[#2d343b]">
+              A one sentence welcome goes here, in the owner&apos;s own words.
+              <DraftTag />
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {tel ? (
+                <a
+                  href={tel}
+                  style={{ background: accent, color: onAccent }}
+                  className="inline-flex min-h-[48px] items-center px-6 py-3 font-bold"
+                >
+                  Call {lead.phone}
+                </a>
+              ) : (
+                <span className="inline-flex min-h-[48px] items-center border-2 border-dashed border-[#4b5560] px-6 py-3 font-bold">
+                  Phone number to confirm
+                </span>
+              )}
+            </div>
+          </div>
+          <Placeholder label="Photo placeholder: a real photo of the business goes here" className="min-h-[240px] md:min-h-[320px]" />
+        </section>
+
+        <section id="about" className="border-t-2 border-[#1b1f23] bg-white" aria-labelledby="about-h">
+          <div className="mx-auto max-w-5xl px-4 py-12">
+            <h2 id="about-h" className="font-[family-name:var(--font-archivo)] text-3xl font-extrabold">
+              About
+            </h2>
+            <p className="mt-4 max-w-2xl text-lg leading-relaxed">
+              {copy.about}
+              <DraftTag />
+            </p>
+          </div>
+        </section>
+
+        <section id="services" className="border-t-2 border-[#1b1f23]" aria-labelledby="svc-h">
+          <div className="mx-auto max-w-5xl px-4 py-12">
+            <h2 id="svc-h" className="font-[family-name:var(--font-archivo)] text-3xl font-extrabold">
+              Services
+            </h2>
+            <p className="mt-2 text-[#2d343b]">
+              The real list comes from the owner. These rows only show how it would be laid out.
+            </p>
+            {/* Numbered list rows, intentionally not a card grid */}
+            <ol className="mt-6 divide-y-2 divide-[#1b1f23] border-y-2 border-[#1b1f23]">
+              {copy.items.map((item, i) => (
+                <li key={item} className="flex items-baseline gap-5 py-5">
+                  <span className="font-[family-name:var(--font-archivo)] text-3xl font-extrabold" aria-hidden="true">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="text-lg font-semibold">{item}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        <section id="visit" className="border-t-2 border-[#1b1f23] bg-white" aria-labelledby="visit-h">
+          <div className="mx-auto grid max-w-5xl gap-8 px-4 py-12 md:grid-cols-2">
+            <div>
+              <h2 id="visit-h" className="font-[family-name:var(--font-archivo)] text-3xl font-extrabold">
+                Visit or contact
+              </h2>
+              <dl className="mt-6 space-y-4">
+                <div>
+                  <dt className="text-sm font-bold uppercase tracking-wide text-[#2d343b]">Phone</dt>
+                  <dd className="text-lg">
+                    {tel ? <a href={tel} className="underline underline-offset-4">{lead.phone}</a> : "To confirm"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-bold uppercase tracking-wide text-[#2d343b]">Address (from Google listing)</dt>
+                  <dd className="text-lg">{lead.address || "To confirm"}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-bold uppercase tracking-wide text-[#2d343b]">Hours</dt>
+                  <dd className="text-lg">To confirm with the owner</dd>
+                </div>
+              </dl>
+            </div>
+            <Placeholder label="Map placeholder: an embedded map would go here" className="min-h-[220px]" />
+          </div>
+        </section>
+      </main>
+
+      <footer className="border-t-2 border-[#1b1f23] bg-[#1b1f23] px-4 py-8 text-sm text-white">
+        <div className="mx-auto max-w-5xl space-y-2">
+          <p>
+            Concept only, prepared by {brand.name}. Not affiliated with {lead.name}. Built from public
+            Google listing details; copy marked as draft is a suggestion, not a statement of fact.
+          </p>
+          {brand.replyTo ? (
+            <p>
+              Questions or want this taken down? Email{" "}
+              <a href={`mailto:${brand.replyTo}`} className="underline underline-offset-4">{brand.replyTo}</a>.
+            </p>
+          ) : null}
+        </div>
+      </footer>
+    </div>
+  );
+}

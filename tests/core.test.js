@@ -374,3 +374,20 @@ test("post-login redirects are same-site only", async () => {
     assert.equal(safeNext(bad), "/");
   }
 });
+
+test("a damaged local database folder is moved aside and replaced, not deleted", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { openLocal } = await import("../lib/db.js");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kestrel-db-"));
+  const dir = path.join(root, "pglite");
+  fs.mkdirSync(path.join(dir, "base", "1"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "global"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "PG_VERSION"), "16");
+  fs.writeFileSync(path.join(dir, "global", "pg_control"), "junk");
+  const db = await openLocal(dir);
+  assert.equal((await db.query("SELECT COUNT(*)::int AS n FROM leads")).rows[0].n, 0);
+  assert.ok(fs.readdirSync(root).some((n) => n.startsWith("pglite.broken-")), "old folder kept");
+  await db.close();
+});

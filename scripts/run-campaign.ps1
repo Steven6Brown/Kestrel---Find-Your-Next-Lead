@@ -1,4 +1,4 @@
-# Starts one SiteScout campaign by calling the local app. Windows Task Scheduler runs this.
+# Starts one Kestrel campaign by calling the local app. Windows Task Scheduler runs this.
 # Reads APP_BASE_URL and CRON_SECRET from .env.local, so no secret lives in the task itself.
 # The app must be running (for example `npm run start`) at the scheduled time.
 param([Parameter(Mandatory = $true)][int]$CampaignId)

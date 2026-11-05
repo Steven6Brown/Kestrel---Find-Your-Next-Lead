@@ -1,7 +1,7 @@
 # Registers (or replaces) a Windows Task Scheduler job that runs one campaign on a schedule.
 # Run it yourself from the project folder in PowerShell. Nothing here runs automatically.
 #   .\scripts\register-task.ps1 -CampaignId 1 -Schedule Daily -Time 06:00
-# Remove a job later with:  Unregister-ScheduledTask -TaskName "SiteScout campaign 1"
+# Remove a job later with:  Unregister-ScheduledTask -TaskName "Kestrel campaign 1"
 param(
   [Parameter(Mandatory = $true)][int]$CampaignId,
   [ValidateSet("Daily", "Weekdays", "Weekly")][string]$Schedule = "Daily",
@@ -20,7 +20,7 @@ switch ($Schedule) {
 
 # StartWhenAvailable runs a missed job once the PC is back on.
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
-$name = "SiteScout campaign $CampaignId"
+$name = "Kestrel campaign $CampaignId"
 Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger -Settings $settings `
-  -Description "Starts SiteScout campaign $CampaignId ($Schedule at $Time)" -Force | Out-Null
-Write-Host "Registered '$name': $Schedule at $Time. Keep the SiteScout app running (npm run start)."
+  -Description "Starts Kestrel campaign $CampaignId ($Schedule at $Time)" -Force | Out-Null
+Write-Host "Registered '$name': $Schedule at $Time. Keep the Kestrel app running (npm run start)."

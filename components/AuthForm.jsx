@@ -65,12 +65,12 @@ export default function AuthForm({ action, fields, submitLabel, hidden = {}, ini
 
 /** Shows recovery codes exactly once, with a plain download so they can be stored safely. */
 export function RecoveryCodes({ codes }) {
-  const href = `data:text/plain;charset=utf-8,${encodeURIComponent(`SiteScout recovery codes\nEach code works once.\n\n${codes.join("\n")}\n`)}`;
+  const href = `data:text/plain;charset=utf-8,${encodeURIComponent(`Kestrel recovery codes\nEach code works once.\n\n${codes.join("\n")}\n`)}`;
   return (
     <div className="border border-warn bg-warn-bg p-4 text-warn">
       <p className="font-semibold">Save these recovery codes now. They are shown only once.</p>
       <ul className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-ink">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
-      <a className="btn mt-4" href={href} download="sitescout-recovery-codes.txt">Download as a text file</a>
+      <a className="btn mt-4" href={href} download="kestrel-recovery-codes.txt">Download as a text file</a>
     </div>
   );
 }

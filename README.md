@@ -1,4 +1,4 @@
-# SiteScout
+# Kestrel
 
 Finds local businesses that have no website, builds a concept mockup for each, and drafts a cold email for a human to review and send. Operated by Aquila Digital LLC, built so another brand can be white-labeled later.
 
@@ -65,6 +65,6 @@ Campaigns are picked with buttons only (state, cities, business types, schedule)
 .\scripts\register-task.ps1 -CampaignId 1 -Schedule Daily -Time 06:00
 ```
 
-Add `CRON_SECRET` to `.env.local` first. The task calls the running app (`scripts/run-campaign.ps1`, logged to `data\scheduler.log`), so the app must be running at that time, for example `npm run build` then `npm run start` left open or started at logon. The result appears under Run history. Remove a job with `Unregister-ScheduledTask -TaskName "SiteScout campaign 1"`.
+Add `CRON_SECRET` to `.env.local` first. The task calls the running app (`scripts/run-campaign.ps1`, logged to `data\scheduler.log`), so the app must be running at that time, for example `npm run build` then `npm run start` left open or started at logon. The result appears under Run history. Remove a job with `Unregister-ScheduledTask -TaskName "Kestrel campaign 1"`.
 
 Docs: [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md), [TESTING.md](TESTING.md), [CHANGELOG.md](CHANGELOG.md).

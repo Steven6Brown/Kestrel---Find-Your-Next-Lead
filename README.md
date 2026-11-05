@@ -74,6 +74,17 @@ The **Leads** page is where you decide who becomes a lead. Narrow the list with 
 
 Live money stays blocked until you deliberately set `PAYPAL_ALLOW_LIVE=1` and `PAYPAL_ENV=live` with live credentials. Cancelling a sent invoice is not built yet; do that in PayPal.
 
+## If older scan results seem to be missing
+
+Versions before 0.5 kept the database inside the project folder (`data`). Kestrel now keeps it in the app data folder and copies the old data over automatically the first time, but only if the new location does not exist yet. If it was created empty first (for example by a server that was already running), your old results stay in `data`. To bring them over without touching your current login:
+
+```bash
+node scripts/recover-legacy-data.mjs
+node scripts/recover-legacy-data.mjs --yes
+```
+
+Stop Kestrel first. The first command is a dry run that only reports counts. The second backs up your current database, then adds the old leads, searches and runs, skipping anything that already exists.
+
 ## Where your data lives
 
 The local database, generated secret and mail outbox are kept in %LOCALAPPDATA%\Kestrel (override with `KESTREL_DATA_DIR`), not in the project folder, because this project sits under OneDrive and cloud sync can damage a database's many small files. On the first start of a version that does this, existing data from the old `data\pglite` folder is copied over automatically and the old copy is left as a backup.

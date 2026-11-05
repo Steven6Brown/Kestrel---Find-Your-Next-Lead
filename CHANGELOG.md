@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 (branch crm-core)
+- A connection made before the schema grew now repairs itself (missing table or column triggers a one-time schema update and a retry) instead of showing an error page after a hot reload.
+- Recovery tool for scan results left in the old in-project database folder.
+
 ## 1.0.0 (branch crm-core)
 - PayPal invoicing: create draft, send with confirmation, reconcile payments, outstanding money on Today, Invoices page. Tested against a stand-in PayPal.
 

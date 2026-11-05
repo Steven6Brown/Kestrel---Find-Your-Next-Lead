@@ -1140,3 +1140,26 @@ test("the PayPal test address override only ever points at this computer", async
     assert.equal(paypalBaseFor({ PAYPAL_TEST_BASE_URL: bad }), "https://api-m.sandbox.paypal.com", bad);
   }
 });
+
+test("a connection made before the schema grew repairs itself instead of failing", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const prev = process.env.PGLITE_DIR;
+  process.env.PGLITE_DIR = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kestrel-stale-schema-")), "pglite");
+  delete globalThis.__kestrelDb;
+  delete globalThis.__kestrelMigratedAt;
+  const { query } = await import("../lib/db.js");
+  await query("SELECT 1 AS ok"); // connects with the full schema
+  // Pretend this connection predates the newest tables and columns.
+  await query("DROP TABLE tasks");
+  await query("ALTER TABLE leads DROP COLUMN stage CASCADE");
+  const rows = await query("SELECT COUNT(*)::int AS n FROM tasks"); // would have thrown: relation does not exist
+  assert.equal(rows[0].n, 0);
+  const stage = await query("SELECT stage FROM leads LIMIT 1");
+  assert.ok(Array.isArray(stage), "the missing column was restored too");
+  await assert.rejects(query("SELECT * FROM table_that_never_existed"), (e) => e.code === "42P01", "genuine mistakes still fail, with the original error");
+  process.env.PGLITE_DIR = prev;
+  delete globalThis.__kestrelDb;
+  delete globalThis.__kestrelMigratedAt;
+});

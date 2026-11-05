@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { requireUser, isManager } from "@/lib/auth";
 import Flash from "@/components/Flash";
+import PageHeader from "@/components/PageHeader";
+import StatTiles from "@/components/StatTiles";
+import Icon from "@/components/Icon";
+import { nextStepCounts, pickSteps } from "@/lib/nextstep";
 import { BRAND } from "@/lib/auth";
 import { dueTasks, listMeetings, needsFollowUp, outstandingSummary, stageCounts } from "@/lib/store";
 import { CLOSED_STAGES, MEETING_LOCATIONS, QUICK_DUE, nextDaysWindow, STAGES, addDays, dueLabel, labelOf, meetingWhen, stageLabel, todayStr } from "@/lib/crm";
@@ -58,30 +62,44 @@ export default async function Today({ searchParams }) {
   const sp = await searchParams;
   const today = todayStr();
   const win = nextDaysWindow(7);
-  const [tasks, waiting, counts, meetings] = await Promise.all([
+  const [tasks, waiting, counts, meetings, nc] = await Promise.all([
     dueTasks(BRAND, today, 7, addDays), needsFollowUp(BRAND, 15), stageCounts(BRAND),
-    listMeetings(BRAND, { ...win, limit: 20 }),
+    listMeetings(BRAND, { ...win, limit: 20 }), nextStepCounts(BRAND, today),
   ]);
+  const steps = pickSteps(nc);
+  const openTotal = STAGES.filter(([k]) => !CLOSED_STAGES.includes(k)).reduce((n, [k]) => n + (counts[k] || 0), 0);
+  const tiles = [
+    { label: "Follow-ups due", value: tasks.overdue.length + tasks.today.length, sub: tasks.overdue.length ? `${tasks.overdue.length} overdue` : "Overdue and due today", href: "/today#over-h", icon: "alert" },
+    { label: "Drafts to review", value: nc.review, sub: `${nc.approved} approved to send`, href: "/queue", icon: "mail" },
+    { label: "Meetings this week", value: meetings.length, sub: "Next 7 days", href: "/calendar", icon: "calendar" },
+    { label: "Open in pipeline", value: openTotal, sub: "Not won or lost", href: "/pipeline", icon: "columns" },
+  ];
+  const dateLine = new Date(`${today}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const money = isManager(user) ? await outstandingSummary(BRAND, today) : null;
   const paypalReady = !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET);
-  const open = STAGES.filter(([k]) => !CLOSED_STAGES.includes(k));
 
   return (
     <div className="reveal">
-      <p className="eyebrow">{today}</p>
-      <h1 className="mt-1 text-4xl font-semibold">Who to follow up with today</h1>
-      <div className="mt-4"><Flash sp={sp} /></div>
+      <PageHeader title="Today" subtitle={dateLine} actions={<Link href="/leads/new" className="btn btn-primary">Add a contact</Link>} />
+      <div className="mb-4"><Flash sp={sp} /></div>
 
-      <ul className="card mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" aria-label="Open pipeline">
-        {open.map(([k, label]) => (
-          <li key={k} className="border-b border-r border-line p-4">
-            <Link href={`/pipeline#stage-${k}`} className="block">
-              <p className="eyebrow !text-muted">{label}</p>
-              <p className="mt-1 text-3xl font-semibold text-ink">{counts[k] || 0}</p>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <StatTiles tiles={tiles} />
+
+      <section aria-labelledby="attn-h" className="card mt-6 p-5">
+        <h2 id="attn-h" className="text-xl font-semibold">Needs attention</h2>
+        {steps.length === 0 ? (
+          <p className="mt-2 text-muted">Nothing is waiting on you. <Link href="/" className="underline underline-offset-4">Scan a new area</Link> to find more businesses.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-line">
+            {steps.map((s) => (
+              <li key={s.key} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <span className="flex items-center gap-3 text-ink"><span className="text-brand"><Icon name={s.icon} /></span>{s.text}</span>
+                <Link href={s.href} className="btn">{s.cta}</Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {money && (
         <section aria-labelledby="money-h" className="mt-8">
@@ -141,7 +159,6 @@ export default async function Today({ searchParams }) {
         )}
       </section>
 
-      <p className="mt-10"><Link href="/leads/new" className="btn">Add a contact</Link></p>
     </div>
   );
 }

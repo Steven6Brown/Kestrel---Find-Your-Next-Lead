@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0 (branch crm-core)
+- New look and flow. Aquila navy sidebar with the menu in the order the work happens (Today, 1 Find, 2 Reach out, 3 Follow up, 4 Deliver, Admin), light page with white cards by default, and a light and dark toggle that is remembered in a cookie (no flash on load). On phones the menu opens from a Menu button.
+- Fewer places to look: Leads and Redesign targets are one Prospects area with tabs; Meetings sit under Calendar; Opt-outs, Connections, Users, Audit and Account are under Settings, which also holds the email setup checklist; the scanner page no longer repeats the draft button or a second pipeline.
+- Today is the home page: clickable summary tiles, a Needs attention list, and a Next step line on Scan areas, Prospects, Redesign targets, and Review drafts that links each step to the next.
+- Contrast checked on 16 pages in both themes (no failures); phone layout checked.
+
 ## 1.4.1 (branch crm-core)
 - Business is closed: mark a lead closed (button on the lead page and on unverified rows, undo with Reopen). Closed businesses leave lead lists, website checks, redesign targets, overview counts and outreach, any unsent draft is rejected, sending is blocked, and a rescan does not reopen them. Find them under Business status, Closed businesses.
 

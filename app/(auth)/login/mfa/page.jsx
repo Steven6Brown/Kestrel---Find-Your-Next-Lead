@@ -20,7 +20,7 @@ export default async function Mfa({ searchParams }) {
           <AuthForm
             action={mfaAction}
             submitLabel="Verify"
-            hidden={{ next: safeNext(sp.next) }}
+            hidden={{ next: safeNext(sp.next, "/today") }}
             fields={[{ name: "code", label: "Authenticator or recovery code", autoComplete: "one-time-code", autoFocus: true, maxLength: 32 }]}
           />
         </div>

@@ -56,6 +56,7 @@ export default async function Calendar({ searchParams }) {
         <Link href={`/calendar?month=${prev}`} className="btn" aria-label="Previous month">Previous</Link>
         <Link href={`/calendar?month=${monthKey(monthOf(today))}&date=${today}`} className="btn">Today</Link>
         <Link href={`/calendar?month=${next}`} className="btn" aria-label="Next month">Next</Link>
+        <Link href="/meetings" className="btn">Meeting list</Link>
         <a href="/calendar/export" className="btn" download>Download meetings (.ics)</a>
       </div>
       <ul className="mb-4 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted" aria-label="Key">

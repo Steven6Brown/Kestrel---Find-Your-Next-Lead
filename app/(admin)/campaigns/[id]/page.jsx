@@ -28,7 +28,7 @@ export default async function CampaignPage({ params, searchParams }) {
   return (
     <div className="reveal">
       <AutoRefresh active={runs.some((r) => r.status === "running")} />
-      <p><Link href="/" className="inline-flex min-h-[44px] items-center text-muted underline underline-offset-4 hover:text-brand-hover">Back to overview</Link></p>
+      <p><Link href="/" className="inline-flex min-h-[44px] items-center text-muted underline underline-offset-4 hover:text-brand-hover">Back to scan areas</Link></p>
       <p className="eyebrow mt-2">Campaign</p>
       <h1 className="mt-1 text-4xl font-semibold">{c.name}</h1>
       <div className="mt-4"><Flash sp={sp} /></div>

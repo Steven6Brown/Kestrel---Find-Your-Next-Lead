@@ -13,7 +13,7 @@ export const metadata = { title: "Sign in" };
 
 export default async function Login({ searchParams }) {
   const sp = await searchParams;
-  const next = safeNext(sp.next);
+  const next = safeNext(sp.next, "/today");
   const s = await currentSession();
   if (s && (!s.mfa_enabled || s.mfa_passed)) redirect(next);
   if ((await countUsers(BRAND)) === 0) redirect("/setup");

@@ -28,7 +28,7 @@ export async function loginAction(_prev, fd) {
   const email = u.normEmail(str(fd.get("email"), 254));
   const password = str(fd.get("password"), PASSWORD_MAX * 2);
   const remember = fd.get("remember") === "on";
-  const next = safeNext(fd.get("next"));
+  const next = safeNext(fd.get("next"), "/today");
   const values = { email };
   const { ip } = await clientInfo();
   if (!allow(`login:ip:${ip}`, 10, 60_000)) return { error: "Too many attempts. Wait a minute and try again.", values };
@@ -65,7 +65,7 @@ export async function loginAction(_prev, fd) {
 export async function mfaAction(_prev, fd) {
   const s = await requirePendingMfa();
   const { ip } = await clientInfo();
-  const next = safeNext(fd.get("next"));
+  const next = safeNext(fd.get("next"), "/today");
   const code = str(fd.get("code"), 32).trim();
   if (!allow(`mfa:${s.session_id}`, 10, 10 * 60_000)) return { error: "Too many attempts. Sign in again in a few minutes." };
 
@@ -164,7 +164,7 @@ export async function acceptInviteAction(_prev, fd) {
   await u.activateInvited(user.id, { name, passwordHash: await hashPassword(password) });
   await u.audit(BRAND, user.id, "invite_accepted", "", ip);
   await startSession(user.id, { mfaPassed: true });
-  redirect("/");
+  redirect("/today");
 }
 
 export async function setupAction(_prev, fd) {

@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { product } from "@/config/product";
 import { getBrand, DEFAULT_BRAND_ID } from "@/config/brands";
+import { cookies } from "next/headers";
+import ThemeToggle from "./ThemeToggle";
+import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 import { logoutAction } from "@/app/(auth)/actions";
 
 /** Logo lockup read from the brand config, so a white-label brand swaps the logo and name. */
@@ -19,7 +22,8 @@ export function Lockup({ brand }) {
   );
 }
 
-export default function BrandHeader({ links = [], user = null }) {
+export default async function BrandHeader({ links = [], user = null }) {
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
   const brand = getBrand(DEFAULT_BRAND_ID);
   return (
     <header className="border-b border-line bg-paper">
@@ -38,6 +42,7 @@ export default function BrandHeader({ links = [], user = null }) {
             </ul>
           </nav>
         )}
+        <ThemeToggle initial={theme} />
         {user && (
           <div className="flex items-center gap-2">
             <Link href="/account" className="inline-flex min-h-[44px] items-center px-2 text-sm text-muted underline-offset-4 hover:text-brand-hover hover:underline">

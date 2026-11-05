@@ -77,14 +77,6 @@ async function makeDraft(lead) {
   await store.saveDraft(BRAND, lead.id, { subject, body });
 }
 
-export async function draftAllAction() {
-  await requireUser();
-  const leads = await store.leadsNeedingDraft(BRAND);
-  for (const lead of leads) await makeDraft(lead);
-  revalidatePath("/", "layout");
-  done("/queue", leads.length ? `Created ${leads.length} draft(s) for review.` : "Every no-website lead already has a draft.");
-}
-
 export async function siteCheckAction(formData) {
   await requireUser();
   const leadId = id.parse(formData.get("leadId"));

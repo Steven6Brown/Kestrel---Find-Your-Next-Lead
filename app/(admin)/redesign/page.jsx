@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import Flash from "@/components/Flash";
+import PageHeader from "@/components/PageHeader";
+import NextStep from "@/components/NextStep";
+import ProspectTabs from "@/components/ProspectTabs";
 import AutoRefresh from "@/components/AutoRefresh";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
 import { auditCounts, countRedesignTargets, countUnaudited, redesignTargets, runningAudit } from "@/lib/store";
@@ -37,12 +40,10 @@ export default async function Redesign({ searchParams }) {
 
   return (
     <div className="reveal">
-      <p className="eyebrow">Redesign targets</p>
-      <h1 className="mt-1 text-4xl font-semibold">Businesses with a website that needs work</h1>
-      <p className="mt-2 max-w-2xl text-muted">
-        Kestrel scores each business website out of 100 against the things Aquila builds in: a secure connection, a phone friendly layout, clear page structure, image descriptions, current code, speed, and an easy way to contact the business. Pick a cutoff to see the sites that score below it.
-      </p>
-      <div className="mt-4"><Flash sp={sp} /></div>
+      <PageHeader title="Redesign targets" subtitle="Kestrel scores each business website out of 100 against the things Aquila builds in: a secure connection, a phone friendly layout, clear page structure, image descriptions, current code, speed, and an easy way to contact the business. Pick a cutoff to see the sites that score below it." />
+      <NextStep here="/redesign" />
+      <ProspectTabs current="redesign" />
+      <div className="mb-4"><Flash sp={sp} /></div>
 
       <AutoRefresh active={!!running} />
       <section aria-labelledby="audit-h" className="card mb-6 p-5">

@@ -13,6 +13,8 @@
 | Website quality audit: score, status and reasons for a business's public website | Kestrel reads the public home page of each lead's own website once. With a PageSpeed key set, that website address is also sent to Google PageSpeed Insights | Judge whether a site needs a redesign | Postgres `leads` | Same as leads |
 | Opted-out addresses | Unsubscribe link or manual entry | Never contact again | `suppressions` | Kept indefinitely on purpose |
 
+The light or dark choice is saved in a cookie named ks_theme (the single word light or dark, one year, no personal data). It is a preference cookie, not tracking.
+
 Processors: Google (Places), Resend (delivery), hosting provider. No analytics, no cookies besides HTTP Basic Auth. Data is not used for any other purpose.
 
 Known gap: no per-lead delete or export control yet; delete rows directly in the database when someone requests removal (keep their address on the suppression list).

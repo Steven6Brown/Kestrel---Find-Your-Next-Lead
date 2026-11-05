@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import Flash from "@/components/Flash";
+import PageHeader from "@/components/PageHeader";
+import NextStep from "@/components/NextStep";
+import ProspectTabs from "@/components/ProspectTabs";
+import { tabFor } from "@/lib/prospecttabs";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
 import AutoRefresh from "@/components/AutoRefresh";
 import { countLeadsFiltered, countUnverified, countWaitingForLookup, leadFacets, runningVerification, searchLeads } from "@/lib/store";
-import { CHECK, OPEN_STATE, PAGE_SIZE, PHONE, SITE, STAGE_FILTER, STATUS, hrefWith, parseFilters } from "@/lib/leadfilters";
+import { CHECK, PAGE_SIZE, PHONE, STAGE_FILTER, STATUS, hrefWith, parseFilters } from "@/lib/leadfilters";
 import { draftFilteredAction, setClosedAction, siteCheckAction, verifyWebsitesAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -48,10 +52,10 @@ export default async function Leads({ searchParams }) {
 
   return (
     <div className="reveal">
-      <p className="eyebrow">Leads database</p>
-      <h1 className="mt-1 text-4xl font-semibold">Every business Kestrel has found</h1>
-      <p className="mt-2 max-w-2xl text-muted">Narrow the list with the buttons, then create outreach drafts or download the result. Nothing is emailed from here.</p>
-      <div className="mt-4"><Flash sp={sp} /></div>
+      <PageHeader title="Prospects" subtitle="Every business Kestrel has found. Narrow the list with the buttons, then create outreach drafts or download the result. Nothing is emailed from here." />
+      <NextStep here="/leads" />
+      <ProspectTabs current={tabFor(f)} />
+      <div className="mb-4"><Flash sp={sp} /></div>
 
       <AutoRefresh active={!!running} />
       <section aria-labelledby="ver-h" className="card mb-6 p-5">
@@ -72,8 +76,6 @@ export default async function Leads({ searchParams }) {
 
       <section aria-labelledby="filters-h" className="card space-y-5 p-5">
         <h2 id="filters-h" className="sr-only">Filters</h2>
-        <Chips label="Website" options={SITE} value={f.site} f={f} field="site" />
-        <Chips label="Business status" options={OPEN_STATE} value={f.open} f={f} field="open" />
         <div className="grid gap-5 md:grid-cols-2">
           <Chips label="Phone number" options={PHONE} value={f.phone} f={f} field="phone" />
           <Chips label="Website check" options={CHECK} value={f.check} f={f} field="check" />

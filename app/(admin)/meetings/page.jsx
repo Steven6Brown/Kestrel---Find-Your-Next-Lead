@@ -43,6 +43,7 @@ export default async function Meetings({ searchParams }) {
   return (
     <div className="reveal">
       <p className="eyebrow">Meetings</p>
+      <p><Link href="/calendar" className="inline-flex min-h-[44px] items-center text-muted underline underline-offset-4 hover:text-brand-hover">Back to calendar</Link></p>
       <h1 className="mt-1 text-4xl font-semibold">Upcoming and recent meetings</h1>
       <p className="mt-2 max-w-2xl text-muted">Log a meeting from a contact or client page. Times are shown in this computer&apos;s time zone. Calendar booking comes later, once Kestrel is hosted.</p>
       <div className="mt-4"><Flash sp={sp} /></div>

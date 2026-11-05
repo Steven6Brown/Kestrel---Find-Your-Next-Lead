@@ -1,32 +1,106 @@
 @import "tailwindcss";
 
-/* Aquila Digital brand tokens (sampled from aquiladigital.net). Flat color only: no gradients, no purple. */
+/*
+ * Aquila Digital brand tokens (sampled from aquiladigital.net). Flat color only: no gradients, no purple.
+ * Two themes share one set of names. Light is the default; dark is chosen with the toggle and remembered in a
+ * cookie, so the server renders the right one with no flash. Every pair below was checked for contrast:
+ * body text 4.5:1 or better, input and button outlines 3:1 or better.
+ */
+@theme inline {
+  --color-paper: var(--k-paper);
+  --color-surface: var(--k-surface);
+  --color-ink: var(--k-ink);
+  --color-text: var(--k-text);
+  --color-muted: var(--k-muted);
+  --color-line: var(--k-line);
+  --color-edge: var(--k-edge);
+  --color-field: var(--k-field);
+  --color-brand: var(--k-brand);
+  --color-brand-hover: var(--k-brand-hover);
+  --color-brand-ink: var(--k-brand-ink);
+  --color-primary: var(--k-primary);
+  --color-primary-hover: var(--k-primary-hover);
+  --color-primary-ink: var(--k-primary-ink);
+  --color-warn: var(--k-warn);
+  --color-warn-bg: var(--k-warn-bg);
+  --color-ok: var(--k-ok);
+  --color-ok-bg: var(--k-ok-bg);
+  --color-bad: var(--k-bad);
+  --color-bad-bg: var(--k-bad-bg);
+  --color-side: var(--k-side);
+  --color-side-ink: var(--k-side-ink);
+  --color-side-muted: var(--k-side-muted);
+  --color-side-line: var(--k-side-line);
+  --color-side-active: var(--k-side-active);
+  --color-side-gold: var(--k-side-gold);
+}
+
 @theme {
-  --color-paper: #0b0e13;
-  --color-surface: #151c27;
-  --color-ink: #ffffff;
-  --color-text: #e5e7eb;
-  --color-muted: #9aa3b4;
-  --color-line: #252f3d;
-  --color-edge: #5b6778; /* 3:1 against the page for input borders and button outlines */
-  --color-brand: #c08a2e;
-  --color-brand-hover: #e0ac4c;
-  --color-brand-ink: #0b0e13;
-  --color-warn: #e0ac4c;
-  --color-warn-bg: #2a2110;
-  --color-ok: #7fd99a;
-  --color-ok-bg: #10261a;
-  --color-bad: #f29b9b;
-  --color-bad-bg: #2d1416;
   --font-heading: var(--font-space), "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: var(--font-space), "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: var(--font-plex), Menlo, monospace;
 }
 
+:root {
+  color-scheme: light;
+  --k-paper: #f5f3ec;
+  --k-surface: #ffffff;
+  --k-ink: #1b1f23;
+  --k-text: #2d343b;
+  --k-muted: #4a5360;
+  --k-line: #dcd8ca;
+  --k-edge: #7b8494;
+  --k-field: #ffffff;
+  --k-brand: #94650f;
+  --k-brand-hover: #7a520c;
+  --k-brand-ink: #ffffff;
+  --k-primary: #101722;
+  --k-primary-hover: #243044;
+  --k-primary-ink: #ffffff;
+  --k-warn: #7a5410;
+  --k-warn-bg: #fbf0d9;
+  --k-ok: #1f6b3a;
+  --k-ok-bg: #e4f3e8;
+  --k-bad: #9b1c1c;
+  --k-bad-bg: #fbe8e8;
+  /* The sidebar is Aquila navy in both themes */
+  --k-side: #101722;
+  --k-side-ink: #e8edf3;
+  --k-side-muted: #a9b4c4;
+  --k-side-line: #243044;
+  --k-side-active: #1d2735;
+  --k-side-gold: #e0ac4c;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --k-paper: #0b0e13;
+  --k-surface: #151c27;
+  --k-ink: #ffffff;
+  --k-text: #e5e7eb;
+  --k-muted: #9aa3b4;
+  --k-line: #252f3d;
+  --k-edge: #5b6778;
+  --k-field: #0f141c;
+  --k-brand: #c08a2e;
+  --k-brand-hover: #e0ac4c;
+  --k-brand-ink: #0b0e13;
+  --k-primary: #c08a2e;
+  --k-primary-hover: #e0ac4c;
+  --k-primary-ink: #0b0e13;
+  --k-warn: #e0ac4c;
+  --k-warn-bg: #2a2110;
+  --k-ok: #7fd99a;
+  --k-ok-bg: #10261a;
+  --k-bad: #f29b9b;
+  --k-bad-bg: #2d1416;
+  --k-side: #0e141c;
+  --k-side-active: #1d2735;
+}
+
 html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
-  color-scheme: dark;
 }
 
 body {
@@ -62,6 +136,7 @@ h1, h2, h3 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.5rem;
   min-height: 44px;
   min-width: 44px;
   padding: 0.55rem 1rem;
@@ -69,34 +144,49 @@ h1, h2, h3 {
   border-radius: 8px;
   font-weight: 600;
   font-size: 0.95rem;
-  background: transparent;
+  background: var(--color-surface);
   color: var(--color-ink);
   cursor: pointer;
   transition: border-color 150ms, color 150ms, background-color 150ms;
 }
 .btn:hover { border-color: var(--color-brand); color: var(--color-brand-hover); }
-.btn-primary { background: var(--color-brand); border-color: var(--color-brand); color: var(--color-brand-ink); }
-.btn-primary:hover { background: var(--color-brand-hover); border-color: var(--color-brand-hover); color: var(--color-brand-ink); }
+.btn-primary { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-primary-ink); }
+.btn-primary:hover { background: var(--color-primary-hover); border-color: var(--color-primary-hover); color: var(--color-primary-ink); }
 .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 .btn[disabled]:hover { border-color: var(--color-edge); color: var(--color-ink); }
-.btn-primary[disabled]:hover { background: var(--color-brand); border-color: var(--color-brand); color: var(--color-brand-ink); }
+.btn-primary[disabled]:hover { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-primary-ink); }
 
 .field {
   width: 100%;
   min-height: 44px;
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--color-edge);
-  border-radius: 4px;
-  background: #0f141c;
+  border-radius: 6px;
+  background: var(--color-field);
   color: var(--color-ink);
 }
 .field:focus { border-color: var(--color-brand); }
 
+/* White panels with a thin border, as the main building block of every page */
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-line);
-  border-radius: 4px;
+  border-radius: 12px;
 }
+
+/* A clickable summary tile: icon, big number, label, and where it goes */
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1rem 1.1rem;
+  min-height: 88px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  transition: border-color 150ms;
+}
+.stat:hover { border-color: var(--color-brand); }
 
 .reveal { animation: reveal 400ms ease-out both; }
 @keyframes reveal {
@@ -129,9 +219,9 @@ h1, h2, h3 {
 }
 .chip:hover span { border-color: var(--color-brand); }
 .chip input:checked + span {
-  background: var(--color-brand);
-  border-color: var(--color-brand);
-  color: var(--color-brand-ink);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-ink);
   font-weight: 600;
 }
 .chip input:checked + span::before { content: "\2713\00a0"; }

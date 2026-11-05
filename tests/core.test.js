@@ -1884,3 +1884,88 @@ test("the Open and Closed filter is a button value that survives links and rejec
   assert.equal(lf.hrefWith("/leads", lf.parseFilters({}), { open: "closed" }), "/leads?open=closed");
   assert.equal(lf.hrefWith("/leads", lf.parseFilters({ open: "closed" }), { site: "has" }), "/leads?site=has&open=closed");
 });
+
+// ---------------- navigation, next step, theme ----------------
+
+test("the menu follows the order of the work and highlights the right page", async () => {
+  const nav = await import("../lib/nav.js");
+  const all = nav.NAV_GROUPS.flatMap((g) => g.items);
+  assert.deepEqual(nav.NAV_GROUPS.map((g) => g.key), ["home", "find", "reach", "follow", "deliver", "settings"], "find, reach out, follow up, deliver");
+  assert.ok(all.length <= 9, "a short menu, not thirteen links");
+  assert.equal(new Set(all.map((i) => i.href)).size, all.length, "no page appears twice");
+  const active = (p) => all.filter((i) => nav.isActive(i, p)).map((i) => i.label);
+  assert.deepEqual(active("/"), ["Scan areas"], "the root only matches itself");
+  assert.deepEqual(active("/today"), ["Today"]);
+  assert.deepEqual(active("/campaigns/new"), ["Scan areas"]);
+  assert.deepEqual(active("/leads"), ["Prospects"]);
+  assert.deepEqual(active("/leads/42"), ["Prospects"]);
+  assert.deepEqual(active("/redesign"), ["Prospects"], "redesign targets live under Prospects");
+  assert.deepEqual(active("/meetings"), ["Calendar"], "meetings live under Calendar");
+  assert.deepEqual(active("/invoices"), ["Clients and money"]);
+  for (const p of ["/connections", "/users", "/audit", "/optouts", "/account", "/settings"]) assert.deepEqual(active(p), ["Settings"], p);
+  assert.deepEqual(active("/leadsX"), [], "a longer word is not a match");
+  assert.deepEqual(active(""), []);
+  // every page named in the menu or in Setup is reachable from it
+  for (const s of nav.SETUP_ITEMS) assert.ok(all.some((i) => nav.isActive(i, s.href)), s.href);
+  assert.ok(nav.SETUP_ITEMS.some((s) => !s.manager) && nav.SETUP_ITEMS.some((s) => s.manager));
+  assert.equal(nav.initialsOf("Steven Brown"), "SB");
+  assert.equal(nav.initialsOf("  madonna "), "M");
+  assert.equal(nav.initialsOf(""), "?");
+  assert.equal(nav.initialsOf(null), "?");
+});
+
+test("the theme is exactly light or dark, whatever the cookie says", async () => {
+  const t = await import("../lib/theme.js");
+  assert.equal(t.parseTheme("dark"), "dark");
+  for (const v of ["light", "", undefined, null, "DARK", "dark; x", "<script>", 1]) assert.equal(t.parseTheme(v), "light", String(v));
+  assert.equal(t.THEME_COOKIE, "ks_theme");
+});
+
+test("next step: people first, then drafts, then checks, and never the page you are on", async () => {
+  const n = await import("../lib/nextstep.js");
+  const base = { dueNow: 0, review: 0, approved: 0, lookups: 0, unscored: 0 };
+  assert.deepEqual(n.pickSteps(base), []);
+  assert.equal(n.pickNext(base).key, "scan", "nothing waiting: suggest finding more");
+  assert.equal(n.pickNext({ ...base, unscored: 4, lookups: 2, review: 3, dueNow: 1 }).key, "followups", "people waiting on you come first");
+  assert.deepEqual(n.pickSteps({ dueNow: 1, review: 3, approved: 2, lookups: 2, unscored: 4 }).map((s) => s.key), ["followups", "review", "send", "lookup", "score"]);
+  assert.equal(n.pickNext({ ...base, lookups: 2, unscored: 4 }).key, "lookup", "check who has a site before scoring sites");
+  assert.equal(n.pickNext({ ...base, review: 3 }, "/queue").key, "scan", "a step pointing at this page is skipped");
+  assert.equal(n.pickNext({ ...base, review: 3, lookups: 1 }, "/queue").key, "lookup");
+  const one = n.pickNext({ ...base, review: 1 });
+  assert.equal(one.text, "1 draft is waiting for your review");
+  assert.equal(n.pickNext({ ...base, review: 2 }).text, "2 drafts are waiting for your review");
+  assert.equal(n.pickNext({ ...base, lookups: 1 }).text, "1 business needs a website check");
+  assert.equal(n.pickNext({ ...base, unscored: 1 }).text, "1 website is waiting to be scored");
+  for (const s of n.pickSteps({ dueNow: 5, review: 5, approved: 5, lookups: 5, unscored: 5 })) {
+    assert.ok(s.href.startsWith("/") && s.cta && s.icon);
+    assert.ok(!/[\u2013\u2014]/.test(s.text), "no dash punctuation");
+  }
+});
+
+test("next step counts come from real data and stay inside the brand", async () => {
+  const n = await import("../lib/nextstep.js");
+  const { todayStr } = await import("../lib/crm.js");
+  const c = await n.nextStepCounts("aquila", todayStr());
+  for (const k of ["dueNow", "review", "approved", "lookups", "unscored"]) assert.ok(Number.isInteger(c[k]) && c[k] >= 0, k);
+  const other = await n.nextStepCounts("other", todayStr());
+  assert.deepEqual(other, { dueNow: 0, review: 0, approved: 0, lookups: 0, unscored: 0 }, "another brand sees nothing of ours");
+  // a lead with a follow-up due today shows up
+  const id = await seedVerifyLead("Next Step Lead Verify7");
+  await store.addTask("aquila", id, { title: "Call back", dueOn: todayStr() });
+  assert.equal((await n.nextStepCounts("aquila", todayStr())).dueNow, c.dueNow + 1);
+});
+
+test("the Prospects tabs map filters to exactly one highlighted tab", async () => {
+  const { PROSPECT_TABS, tabFor } = await import("../lib/prospecttabs.js");
+  const lf = await import("../lib/leadfilters.js");
+  assert.deepEqual(PROSPECT_TABS.map((t) => t.key), ["all", "none", "social", "has", "redesign", "closed"]);
+  assert.equal(new Set(PROSPECT_TABS.map((t) => t.href)).size, 6);
+  for (const tab of PROSPECT_TABS.filter((t) => t.href.startsWith("/leads"))) {
+    const q = Object.fromEntries(new URLSearchParams(tab.href.split("?")[1] || ""));
+    assert.equal(tabFor(lf.parseFilters(q)), tab.key, tab.label);
+  }
+  assert.equal(tabFor(lf.parseFilters({})), "none", "the default view is No website");
+  assert.equal(tabFor(lf.parseFilters({ site: "has" })), "has");
+  assert.equal(tabFor(lf.parseFilters({ site: "bogus" })), "none", "junk falls back to the default view");
+  assert.equal(tabFor(lf.parseFilters({ open: "closed", site: "none" })), "closed", "closed wins");
+});

@@ -1,11 +1,13 @@
 import { requireUser } from "@/lib/auth";
 import Link from "next/link";
 import Flash from "@/components/Flash";
+import PageHeader from "@/components/PageHeader";
+import NextStep from "@/components/NextStep";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
 import { listDrafts } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Review queue" };
+export const metadata = { title: "Review drafts" };
 
 const FILTERS = [["draft", "Awaiting review"], ["approved", "Approved"], ["rejected", "Rejected"], ["sent", "Sent"]];
 
@@ -16,9 +18,9 @@ export default async function Queue({ searchParams }) {
   const drafts = await listDrafts(DEFAULT_BRAND_ID, status);
   return (
     <div className="reveal">
-      <h1 className="text-4xl font-semibold">Review queue</h1>
-      <p className="mt-2 text-muted">Open a draft to edit, approve, and send it yourself. Nothing is sent automatically.</p>
-      <div className="mt-4"><Flash sp={sp} /></div>
+      <PageHeader title="Review drafts" subtitle="Open a draft to edit, approve, and send it yourself. Nothing is sent automatically." />
+      <NextStep here="/queue" />
+      <div className="mb-4"><Flash sp={sp} /></div>
       <nav aria-label="Draft status filter" className="mb-6">
         <ul className="flex flex-wrap gap-2">
           {FILTERS.map(([k, label]) => (

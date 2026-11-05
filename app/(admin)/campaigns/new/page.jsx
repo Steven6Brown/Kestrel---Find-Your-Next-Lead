@@ -47,7 +47,7 @@ export default async function NewCampaign({ searchParams }) {
 
   return (
     <div className="reveal">
-      <p><Link href="/" className="inline-flex min-h-[44px] items-center text-muted underline underline-offset-4 hover:text-brand-hover">Back to overview</Link></p>
+      <p><Link href="/" className="inline-flex min-h-[44px] items-center text-muted underline underline-offset-4 hover:text-brand-hover">Back to scan areas</Link></p>
       <p className="eyebrow mt-2">New campaign</p>
       <h1 className="mt-1 text-4xl font-semibold">Where should Kestrel scan?</h1>
       <p className="mt-2 max-w-2xl text-muted">

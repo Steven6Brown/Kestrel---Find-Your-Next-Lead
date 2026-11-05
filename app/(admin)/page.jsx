@@ -3,15 +3,15 @@ import Link from "next/link";
 import Flash from "@/components/Flash";
 import { StatusPill } from "@/components/Chips";
 import AutoRefresh from "@/components/AutoRefresh";
-import { draftAllAction } from "./actions";
-import { DEFAULT_BRAND_ID, getBrand, brandReadiness } from "@/config/brands";
+import PageHeader from "@/components/PageHeader";
+import StatTiles from "@/components/StatTiles";
+import NextStep from "@/components/NextStep";
+import { DEFAULT_BRAND_ID } from "@/config/brands";
 import { listCampaigns, listRuns, stats } from "@/lib/store";
-import { baseUrl, isPublicHttps } from "@/lib/tokens";
 import { frequencyLabel, nextRun, timeLabel } from "@/lib/campaigns";
-import { provider } from "@/lib/discovery";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Overview" };
+export const metadata = { title: "Scan areas" };
 
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "Never");
 
@@ -21,60 +21,28 @@ export default async function Overview({ searchParams }) {
   const [s, campaigns, runs] = await Promise.all([
     stats(DEFAULT_BRAND_ID), listCampaigns(DEFAULT_BRAND_ID), listRuns(DEFAULT_BRAND_ID, { limit: 8 }),
   ]);
-  const brand = getBrand(DEFAULT_BRAND_ID);
-  const scraperIssues = provider() === "google" && !process.env.GOOGLE_PLACES_API_KEY
-    ? ["DISCOVERY_PROVIDER is google but GOOGLE_PLACES_API_KEY is not set."] : [];
-  const emailSetup = [
-    ...brandReadiness(brand),
-    ...(process.env.RESEND_API_KEY ? [] : ["RESEND_API_KEY is not set, so sending is disabled."]),
-    ...(isPublicHttps(baseUrl()) ? [] : ["APP_BASE_URL is not a public https URL, so emailed links would not work for recipients."]),
-  ];
-  // Pipeline order, left to right: how a lead moves through the system.
-  const pipeline = [
-    ["Found", s.noWebsite, "No website"],
-    ["Drafted", s.awaitingReview, "Awaiting review"],
-    ["Approved", s.approved, "Ready to send"],
-    ["Sent", s.sent, "Contacted"],
+  const tiles = [
+    { label: "Found, no website", value: s.noWebsite, sub: "Check them, then draft", href: "/leads", icon: "list" },
+    { label: "Already have a site", value: s.hasWebsite, sub: "Possible redesigns", href: "/redesign", icon: "target" },
+    { label: "Drafts to review", value: s.awaitingReview, sub: `${s.approved} approved to send`, href: "/queue", icon: "mail" },
+    { label: "Emails sent", value: s.sent, sub: "Contacted", href: "/queue?status=sent", icon: "mail" },
   ];
 
   return (
     <div className="reveal">
       <AutoRefresh active={runs.some((r) => r.status === "running")} />
-      <p className="eyebrow">Overview</p>
-      <h1 className="mt-1 text-4xl font-semibold">Lead pipeline</h1>
-      <p className="mt-2 max-w-2xl text-lg text-muted">
-        Campaigns scan for businesses without a website on a schedule. Nothing is ever emailed automatically.
-      </p>
-      <div className="mt-6"><Flash sp={sp} /></div>
+      <PageHeader
+        title="Scan areas"
+        subtitle="Campaigns look for businesses on a schedule. Nothing is ever emailed automatically."
+        actions={<Link href="/campaigns/new" className="btn btn-primary">New campaign</Link>}
+      />
+      <NextStep here="/" />
+      <div className="mb-6"><Flash sp={sp} /></div>
 
-      <section aria-labelledby="pipe-h" className="mt-4">
-        <h2 id="pipe-h" className="sr-only">Pipeline</h2>
-        <ol className="card grid grid-cols-2 lg:grid-cols-4">
-          {pipeline.map(([label, n, sub], i) => (
-            <li key={label} className="border-b border-r border-line p-4 last:border-r-0">
-              <p className="eyebrow !text-muted">{String(i + 1).padStart(2, "0")} {label}</p>
-              <p className="mt-1 text-4xl font-semibold text-ink">{n}</p>
-              <p className="text-sm text-muted">{sub}</p>
-            </li>
-          ))}
-        </ol>
-        <p className="mt-3 text-sm text-muted">
-          Also tracked: {s.hasWebsite} businesses that already have a website (future redesign leads) and {s.optOuts} opt-outs.
-        </p>
-      </section>
-
-      {scraperIssues.length > 0 && (
-        <section aria-labelledby="setup-h" className="mt-8 border border-warn bg-warn-bg p-4 text-warn">
-          <h2 id="setup-h" className="text-xl font-semibold !text-warn">Scraper setup needed</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5">{scraperIssues.map((t) => <li key={t}>{t}</li>)}</ul>
-        </section>
-      )}
+      <StatTiles tiles={tiles} label="Scan results" />
 
       <section aria-labelledby="camp-h" className="mt-10">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="camp-h" className="text-2xl font-semibold">Campaigns</h2>
-          <Link href="/campaigns/new" className="btn btn-primary">New campaign</Link>
-        </div>
+        <h2 id="camp-h" className="text-2xl font-semibold">Campaigns</h2>
         {campaigns.length === 0 ? (
           <p className="card mt-4 p-5 text-muted">No campaigns yet. A campaign is a saved scan: pick business types and cities, choose a schedule, and it finds leads for you.</p>
         ) : (
@@ -141,17 +109,6 @@ export default async function Overview({ searchParams }) {
         )}
       </section>
 
-      <section aria-labelledby="out-h" className="card mt-10 p-5">
-        <h2 id="out-h" className="text-2xl font-semibold">Outreach drafts</h2>
-        <p className="mt-2 text-muted">Create a draft for every no-website lead that does not have one yet. They go to the review queue.</p>
-        <form action={draftAllAction} className="mt-4"><button type="submit" className="btn">Draft all new leads</button></form>
-        {emailSetup.length > 0 && (
-          <details className="mt-4 text-sm text-muted">
-            <summary className="cursor-pointer font-semibold text-ink">Email setup (only needed before sending, safe to skip while testing)</summary>
-            <ul className="mt-2 list-disc space-y-1 pl-5">{emailSetup.map((t) => <li key={t}>{t}</li>)}</ul>
-          </details>
-        )}
-      </section>
     </div>
   );
 }

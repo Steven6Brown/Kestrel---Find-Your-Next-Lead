@@ -4,8 +4,8 @@ import Flash from "@/components/Flash";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
 import AutoRefresh from "@/components/AutoRefresh";
 import { countLeadsFiltered, countUnverified, countWaitingForLookup, leadFacets, runningVerification, searchLeads } from "@/lib/store";
-import { CHECK, PAGE_SIZE, PHONE, SITE, STAGE_FILTER, STATUS, hrefWith, parseFilters } from "@/lib/leadfilters";
-import { draftFilteredAction, siteCheckAction, verifyWebsitesAction } from "../actions";
+import { CHECK, OPEN_STATE, PAGE_SIZE, PHONE, SITE, STAGE_FILTER, STATUS, hrefWith, parseFilters } from "@/lib/leadfilters";
+import { draftFilteredAction, setClosedAction, siteCheckAction, verifyWebsitesAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Leads" };
@@ -73,6 +73,7 @@ export default async function Leads({ searchParams }) {
       <section aria-labelledby="filters-h" className="card space-y-5 p-5">
         <h2 id="filters-h" className="sr-only">Filters</h2>
         <Chips label="Website" options={SITE} value={f.site} f={f} field="site" />
+        <Chips label="Business status" options={OPEN_STATE} value={f.open} f={f} field="open" />
         <div className="grid gap-5 md:grid-cols-2">
           <Chips label="Phone number" options={PHONE} value={f.phone} f={f} field="phone" />
           <Chips label="Website check" options={CHECK} value={f.check} f={f} field="check" />
@@ -115,7 +116,7 @@ export default async function Leads({ searchParams }) {
           <h2 id="res-h" className="text-2xl font-semibold">{total.toLocaleString()} {total === 1 ? "business" : "businesses"}</h2>
           <div className="flex flex-wrap gap-2">
             <form action={draftFilteredAction}>
-              {Object.entries({ site: f.site, phone: f.phone, check: f.check, status: f.status, stage: f.stage, ready: f.ready, category: f.category, city: f.city }).map(([k, v]) => (
+              {Object.entries({ site: f.site, open: "open", phone: f.phone, check: f.check, status: f.status, stage: f.stage, ready: f.ready, category: f.category, city: f.city }).map(([k, v]) => (
                 <input key={k} type="hidden" name={k} value={v} />
               ))}
               <button type="submit" className="btn btn-primary">Create outreach drafts for ready leads here</button>
@@ -150,7 +151,7 @@ export default async function Leads({ searchParams }) {
                         {l.bucket === "no_website" ? (l.website_kind === "social" ? <>Social page only{l.website ? <><br /><span className="text-muted">{l.website}</span></> : null}</> : needsCheck ? "Not listed (unverified)" : "None listed") : <>{l.website}{l.website_source === "overture" ? <span className="block text-xs text-muted">Found in Overture Maps</span> : null}</>}
                       </td>
                       <td className="p-3">
-                        {l.status === "do_not_contact" ? "Do not contact" : needsCheck ? (
+                        {l.closed_at ? "Closed" : l.status === "do_not_contact" ? "Do not contact" : needsCheck ? (
                           <div className="flex flex-wrap gap-2">
                             <a className="btn" href={`https://www.google.com/search?${q}`} target="_blank" rel="noopener noreferrer">Search the web</a>
                             {["confirmed_none", "has_site"].map((v) => (
@@ -161,6 +162,12 @@ export default async function Leads({ searchParams }) {
                                 <button type="submit" className="btn">{v === "confirmed_none" ? "No website" : "Has website"}</button>
                               </form>
                             ))}
+                            <form action={setClosedAction}>
+                              <input type="hidden" name="leadId" value={l.id} />
+                              <input type="hidden" name="closed" value="1" />
+                              <input type="hidden" name="back" value={here} />
+                              <button type="submit" className="btn">Closed</button>
+                            </form>
                           </div>
                         ) : l.draft_status ? `Draft ${l.draft_status}` : l.bucket === "no_website" ? "Ready" : "Redesign lead"}
                       </td>

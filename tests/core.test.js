@@ -1818,3 +1818,69 @@ test("every sentence the audit can produce is safe to put in an email to the bus
   assert.ok(!/\b(abandoned|terrible|awful|broken|outdated|bad|ugly|useless|amateur)\b/i.test(text), text);
   assert.ok(!/[\u2013\u2014]/.test(text), "no dash punctuation");
 });
+
+// ---------------- closed businesses ----------------
+
+test("a closed business drops out of lists, checks, redesign targets and outreach, and can be reopened", async () => {
+  const lf = await import("../lib/leadfilters.js");
+  const { isRedesignLead } = await import("../lib/redesign.js");
+  const noSite = await seedVerifyLead("Closed Bakery Verify6");
+  const withSite = await seedAuditLead("Closed Site Audit6", "https://closedsite6.example/");
+  await store.applyAudit("aquila", withSite, { status: "ok", score: 10, checks: [], reasons: ["Slow."], psi: null });
+  await store.saveDraft("aquila", noSite, { subject: "s", body: "b" });
+  await store.setDraftStatus("aquila", noSite, "approved");
+  const openFilter = lf.parseFilters({ site: "any" });
+  const closedFilter = lf.parseFilters({ site: "any", open: "closed" });
+  const idsOf = async (f) => (await store.searchLeads("aquila", f, { limit: 5000 })).map((l) => l.id);
+  assert.ok((await idsOf(openFilter)).includes(noSite));
+  const unverifiedBefore = await store.countUnverified("aquila");
+  const waitingBefore = await store.countWaitingForLookup("aquila");
+  const statsBefore = await store.stats("aquila");
+
+  assert.equal(await store.setClosed("other", noSite, true), false, "another brand cannot close it");
+  assert.equal((await store.getLead("aquila", noSite)).closed_at, null);
+  assert.equal(await store.setClosed("aquila", noSite, true), true);
+  assert.equal(await store.setClosed("aquila", withSite, true), true);
+
+  assert.ok(!(await idsOf(openFilter)).includes(noSite), "hidden from the default list");
+  assert.ok((await idsOf(closedFilter)).includes(noSite) && (await idsOf(closedFilter)).includes(withSite), "shown under Closed businesses");
+  assert.equal(await store.countUnverified("aquila"), unverifiedBefore - 1);
+  assert.equal(await store.countWaitingForLookup("aquila"), waitingBefore - 1);
+  assert.ok(!(await store.unverifiedLeads("aquila")).some((l) => l.id === noSite), "no website lookup for a closed business");
+  assert.ok(!(await store.leadsToAudit("aquila")).some((l) => l.id === withSite));
+  assert.ok(!(await store.redesignTargets("aquila", 101)).some((l) => l.id === withSite), "not a redesign target");
+  assert.ok(!(await store.redesignNeedingDraft("aquila", 101)).some((l) => l.id === withSite));
+  assert.ok(!(await store.leadsNeedingDraft("aquila")).some((l) => l.id === noSite));
+  assert.ok(!(await store.draftableInFilter("aquila", closedFilter)).some((l) => l.id === noSite), "bulk drafting never reaches closed businesses, even from the Closed list");
+  const st = await store.stats("aquila");
+  assert.ok(st.noWebsite < statsBefore.noWebsite + 1 && st.noWebsite <= statsBefore.noWebsite, "overview counts skip closed businesses");
+  assert.equal((await store.getDraftByLead("aquila", noSite)).status, "rejected", "an unsent draft cannot go out");
+  const lead = await store.getLead("aquila", noSite);
+  assert.ok(lead.closed_at);
+  assert.equal(isRedesignLead(await store.getLead("aquila", withSite)), false);
+  const brand = getBrand("aquila");
+  const problems = await sendProblems({ lead, draft: await store.getDraftByLead("aquila", noSite), brand, sentToday: 0 });
+  assert.ok(problems.some((p) => /closed/.test(p)), "sending is blocked");
+  const timeline = await store.listActivities("aquila", noSite);
+  assert.ok(timeline.some((a) => /closed/i.test(a.body)), "the timeline records it");
+
+  // a rescan of the same place must not quietly reopen it
+  await store.upsertPlace("aquila", { place_id: "osm:node/ClosedBakeryVerify6", name: "Closed Bakery Verify6", category: "bakery", category_label: "Bakery", address: "", city: "Veriton", region: "VT", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website" }, "shops in Veriton, VT");
+  assert.ok((await store.getLead("aquila", noSite)).closed_at, "still closed after a rescan");
+
+  // reopening puts it back
+  assert.equal(await store.setClosed("aquila", noSite, false), true);
+  assert.ok((await idsOf(openFilter)).includes(noSite));
+  assert.equal((await store.getLead("aquila", noSite)).closed_at, null);
+  assert.equal(await store.setClosed("aquila", 99999999, true), false, "unknown lead");
+});
+
+test("the Open and Closed filter is a button value that survives links and rejects junk", async () => {
+  const lf = await import("../lib/leadfilters.js");
+  assert.equal(lf.parseFilters({}).open, "open");
+  assert.equal(lf.parseFilters({ open: "closed" }).open, "closed");
+  assert.equal(lf.parseFilters({ open: "1; DROP TABLE leads" }).open, "open");
+  assert.equal(lf.hrefWith("/leads", lf.parseFilters({}), {}), "/leads", "default adds nothing to the link");
+  assert.equal(lf.hrefWith("/leads", lf.parseFilters({}), { open: "closed" }), "/leads?open=closed");
+  assert.equal(lf.hrefWith("/leads", lf.parseFilters({ open: "closed" }), { site: "has" }), "/leads?site=has&open=closed");
+});

@@ -100,6 +100,7 @@ export async function createDraftAction(formData) {
   await requireUser();
   const leadId = id.parse(formData.get("leadId"));
   const lead = await store.getLead(BRAND, leadId);
+  if (lead?.closed_at) done(`/leads/${leadId}`, "This business is marked closed, so no outreach can be drafted. Reopen it first if that was a mistake.", "bad");
   const redesign = isRedesignLead(lead);
   if (!lead || (lead.bucket !== "no_website" && !redesign)) done("/leads", "Drafts are only created for no-website leads and for websites that have been scored.", "bad");
   if (!redesign && !store.outreachReady(lead)) done(`/leads/${leadId}`, "Check that this business really has no website first (OpenStreetMap data is often incomplete).", "bad");
@@ -233,4 +234,17 @@ export async function draftRedesignAction(formData) {
   for (const lead of leads) await makeDraft(lead);
   revalidatePath("/", "layout");
   done("/queue", leads.length ? `Created ${leads.length} redesign draft(s). Review them here before anything is sent.` : "Every site below this cutoff already has a draft.", leads.length ? "ok" : "bad");
+}
+
+/** Mark a business as permanently closed, or reopen it. */
+export async function setClosedAction(formData) {
+  const user = await requireUser();
+  const leadId = id.parse(formData.get("leadId"));
+  const closed = formData.get("closed") === "1";
+  const ok = await store.setClosed(BRAND, leadId, closed, { userId: user.id });
+  if (!ok) done("/leads", "That business was not found.", "bad");
+  revalidatePath("/", "layout");
+  const backTo = String(formData.get("back") || "");
+  const dest = backTo.startsWith("/leads") ? safeNext(backTo, `/leads/${leadId}`) : `/leads/${leadId}`;
+  done(dest, closed ? "Marked as closed. It is now hidden from lead lists, website checks and outreach. Any unsent draft was rejected." : "Reopened. It is back in the lead lists.");
 }

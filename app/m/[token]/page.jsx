@@ -20,6 +20,6 @@ export default async function MockupPage({ params }) {
   const { token } = await params;
   const lead = await getLeadByToken(token);
   const concept = lead && (lead.bucket === "no_website" || isRedesignLead(lead));
-  if (!lead || !concept || lead.status === "do_not_contact") notFound();
+  if (!lead || !concept || lead.status === "do_not_contact" || lead.closed_at) notFound();
   return <Mockup lead={lead} brand={getBrand(lead.brand_id)} bookingUrl={await getBookingUrl(lead.brand_id)} audit={auditOf(lead)} />;
 }

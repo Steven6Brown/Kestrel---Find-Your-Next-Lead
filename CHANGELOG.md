@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.4.1 (branch crm-core)
+- Business is closed: mark a lead closed (button on the lead page and on unverified rows, undo with Reopen). Closed businesses leave lead lists, website checks, redesign targets, overview counts and outreach, any unsent draft is rejected, sending is blocked, and a rescan does not reopen them. Find them under Business status, Closed businesses.
+
 ## 1.4.0 (branch crm-core)
 - Redesign concepts: a scored site gets a concept page (public link, never indexed) that adds a plain "what an automated check noticed" section, dated, with the limits of the check stated. Nothing is copied from their site.
 - Redesign email: a separate template that says what was looked at, lists at most three measured findings, links the concept, and keeps the same unsubscribe, address and review rules. Create drafts one at a time or for every site below a cutoff from Redesign targets. Nothing is sent automatically.

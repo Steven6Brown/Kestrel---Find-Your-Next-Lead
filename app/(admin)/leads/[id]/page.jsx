@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Flash from "@/components/Flash";
 import {
-  createDraftAction, draftStatusAction, saveContactAction, saveDraftAction, sendAction, siteCheckAction,
+  createDraftAction, draftStatusAction, saveContactAction, saveDraftAction, sendAction, setClosedAction, siteCheckAction,
 } from "../../actions";
 import { DEFAULT_BRAND_ID, getBrand } from "@/config/brands";
 import { countSentToday, getDraftByLead, getLead, outreachReady } from "@/lib/store";
@@ -26,7 +26,7 @@ export default async function LeadPage({ params, searchParams }) {
   const isNoSite = lead.bucket === "no_website";
   const redesign = isRedesignLead(lead);
   const audit = auditOf(lead);
-  const needsCheck = isNoSite && !outreachReady(lead);
+  const needsCheck = isNoSite && !outreachReady(lead) && !lead.closed_at;
   const checkUrl = `https://www.google.com/search?${new URLSearchParams({ q: [lead.name, lead.city, lead.region].filter(Boolean).join(" ") })}`;
   const problems = draft ? await sendProblems({ lead, draft, brand, sentToday: await countSentToday(DEFAULT_BRAND_ID) }) : [];
   const preview = draft ? resolveBody(draft.body, { brand, email: lead.contact_email }) : "";
@@ -56,6 +56,16 @@ export default async function LeadPage({ params, searchParams }) {
           </div>
         </section>
       )}
+
+      <section aria-labelledby="open-h" className={`mb-6 border p-5 ${lead.closed_at ? "border-warn bg-warn-bg text-warn" : "border-line bg-surface"}`}>
+        <h2 id="open-h" className={`text-xl font-semibold ${lead.closed_at ? "!text-warn" : ""}`}>{lead.closed_at ? `Marked closed on ${lead.closed_at.slice(0, 10)}` : "Is this business still open?"}</h2>
+        <p className="mt-1">{lead.closed_at ? "It is hidden from lead lists, website checks and outreach." : "If it has closed for good (Google shows \"Permanently closed\"), mark it so it stops showing up as a lead."}</p>
+        <form action={setClosedAction} className="mt-3">
+          <input type="hidden" name="leadId" value={lead.id} />
+          <input type="hidden" name="closed" value={lead.closed_at ? "0" : "1"} />
+          <button type="submit" className="btn">{lead.closed_at ? "Reopen" : "Business is closed"}</button>
+        </form>
+      </section>
 
       <dl className="grid gap-x-8 gap-y-3 border border-line bg-surface p-5 sm:grid-cols-2">
         {[
@@ -115,7 +125,7 @@ export default async function LeadPage({ params, searchParams }) {
         </section>
       ) : null}
 
-      {isNoSite || redesign ? (
+      {(isNoSite || redesign) && !lead.closed_at ? (
         <>
           <section aria-labelledby="mock-h" className="mt-8 border border-line bg-surface p-5">
             <h2 id="mock-h" className="text-2xl font-semibold">{redesign ? "Redesign concept" : "Mockup"}</h2>

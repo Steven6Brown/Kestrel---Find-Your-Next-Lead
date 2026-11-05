@@ -32,8 +32,9 @@ To run on a schedule: open the campaign and copy the one-line command it shows i
 1. Click **Leads**. Use the buttons to narrow the list: website (No website is the default), phone, stage, business type, city.
 2. First click **Check websites (free)** at the top of Leads. Kestrel looks each business up in a free open directory (Overture Maps) and moves the ones that already have a website to the "Has a website" list. It takes a minute or two and the page updates by itself. Businesses it cannot find stay "unverified", which proves nothing, so check those yourself in the next step. The first time may need `npm install` and a restart.
 3. For businesses still unverified, click **Search the web**, check whether they really have no website, then click **No website** or **Has website** on that row.
-4. **Only leads ready to contact** shows the ones you can email.
-5. **Download CSV** saves the current list. **Create outreach drafts for ready leads here** makes drafts (nothing is sent).
+4. If Google shows a business as **Permanently closed**, click **Closed** on its row (or **Business is closed** on its page). It disappears from the lists and from outreach. **Business status, Closed businesses** shows them, and **Reopen** undoes it.
+5. **Only leads ready to contact** shows the ones you can email.
+6. **Download CSV** saves the current list. **Create outreach drafts for ready leads here** makes drafts (nothing is sent).
 
 ## 3b. Find websites that need a redesign
 

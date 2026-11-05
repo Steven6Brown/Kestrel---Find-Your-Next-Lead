@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7.0 (branch crm-core)
+- CRM core: pipeline stages, append-only timeline, follow-up tasks, a Today screen, a Pipeline board, manual contacts, and stage filtering in the Leads database.
+
 ## 0.6.0
 - Campaigns now scan every business in the chosen cities (no business types). New filterable Leads database with counts, CSV download, bulk outreach drafts from a filter, and inline website checks. Resumable scans.
 

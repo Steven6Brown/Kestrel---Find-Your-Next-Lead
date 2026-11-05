@@ -598,3 +598,139 @@ test("leads database filters, facets, drafts-in-filter, and CSV are safe and cor
   assert.ok(ready.every((x) => store.outreachReady(x)));
   assert.ok(ready.length > 0);
 });
+
+// ---------------- CRM: stages, timeline, tasks ----------------
+
+test("crm date helpers and stage rules", async () => {
+  const c = await import("../lib/crm.js");
+  assert.equal(c.todayStr(new Date(2026, 10, 5, 23, 59)), "2026-11-05");
+  assert.equal(c.addDays("2026-11-30", 1), "2026-12-01");
+  assert.equal(c.addDays("2026-03-08", 1), "2026-03-09", "across a DST change");
+  assert.equal(c.addDays("2026-01-31", 30), "2026-03-02");
+  assert.equal(c.dueLabel("2026-11-04", "2026-11-05"), "Overdue since 2026-11-04");
+  assert.equal(c.dueLabel("2026-11-05", "2026-11-05"), "Due today");
+  assert.equal(c.dueLabel("2026-11-06", "2026-11-05"), "Due tomorrow");
+  assert.equal(c.isDateStr("2026-02-30x"), false);
+  assert.equal(c.statusForStage("replied", "new"), "contacted");
+  assert.equal(c.statusForStage("replied", "skipped"), "skipped");
+  assert.equal(c.statusForStage("not_interested", "new"), "do_not_contact");
+  assert.equal(c.STAGE_KEYS.length, 8);
+});
+
+test("contacts: manual add, timeline is append only, stage changes are logged", async () => {
+  const id = await store.createContact("aquila", { name: "Pat Referral", email: "Pat@Example.test", phone: "(555) 010-0199", source: "referral", notes: "met at the seminar" });
+  const lead = await store.getLead("aquila", id);
+  assert.equal(lead.place_id, null, "manual contacts need no place id");
+  assert.equal(lead.bucket, "unknown");
+  assert.equal(lead.source, "referral");
+  assert.equal(lead.stage, "new");
+  assert.equal((await store.findLeadByEmail("aquila", "pat@example.test")).id, id, "email lookup ignores case");
+  await store.addActivity("aquila", id, { kind: "call", body: "Called, left a voicemail" });
+  await assert.rejects(store.addActivity("aquila", id, { kind: "bogus", body: "x" }), /Unknown activity kind/);
+  const r = await store.setStage("aquila", id, "replied");
+  assert.equal(r.changed, true);
+  assert.equal((await store.setStage("aquila", id, "replied")).changed, false, "no duplicate timeline entry");
+  const after = await store.getLead("aquila", id);
+  assert.equal(after.stage, "replied");
+  assert.equal(after.status, "contacted", "older status field stays in step");
+  const log = await store.listActivities("aquila", id);
+  assert.deepEqual(log.map((a) => a.kind), ["stage_change", "call", "system"]);
+  assert.match(log[0].body, /New to Replied/);
+  await assert.rejects(store.setStage("aquila", id, "nonsense"), /Unknown stage/);
+});
+
+test("not interested means do not contact: suppression, no pending drafts, timeline", async () => {
+  const id = await store.createContact("aquila", { name: "Stop Me", email: "stop@example.test", source: "manual" });
+  await store.saveDraft("aquila", id, { subject: "Hello there", body: "A long enough body for the draft to save properly." });
+  await store.setStage("aquila", id, "not_interested");
+  const lead = await store.getLead("aquila", id);
+  assert.equal(lead.status, "do_not_contact");
+  assert.equal(await store.isSuppressed("aquila", "stop@example.test"), true);
+  assert.equal((await store.getDraftByLead("aquila", id)).status, "rejected");
+  assert.ok((await store.listActivities("aquila", id)).some((a) => a.kind === "stage_change" && /Not interested/.test(a.body)));
+  // the reverse path: an unsubscribe link click also moves the stage
+  const id2 = await store.createContact("aquila", { name: "Click Unsub", email: "click@example.test", source: "manual" });
+  await store.addSuppression("aquila", "click@example.test", "unsubscribe link");
+  assert.equal((await store.getLead("aquila", id2)).stage, "not_interested");
+});
+
+test("sending an approved draft moves the contact to contacted and logs it", async () => {
+  const id = await store.createContact("aquila", { name: "Send Target", email: "send@example.test", source: "inbound" });
+  await store.saveDraft("aquila", id, { subject: "Hello there", body: "A long enough body for the draft to save properly." });
+  await store.markDraftSent("aquila", id, { to: "send@example.test", resendId: "r1" });
+  assert.equal((await store.getLead("aquila", id)).stage, "contacted");
+  assert.ok((await store.listActivities("aquila", id)).some((a) => a.kind === "email_out" && /send@example.test/.test(a.body)));
+});
+
+test("tasks: Today groups, snooze, done, and who needs a follow-up", async () => {
+  const c = await import("../lib/crm.js");
+  const today = c.todayStr();
+  const id = await store.createContact("aquila", { name: "Task Person", source: "manual" });
+  await store.setStage("aquila", id, "proposal_sent");
+  assert.ok((await store.needsFollowUp("aquila")).some((x) => x.id === id), "mid-conversation with no task");
+  const overdue = await store.addTask("aquila", id, { title: "Chase the proposal", dueOn: c.addDays(today, -2) });
+  const due = await store.addTask("aquila", id, { title: "Send the invoice", dueOn: today });
+  const soon = await store.addTask("aquila", id, { title: "Check in", dueOn: c.addDays(today, 3) });
+  await store.addTask("aquila", id, { title: "Far away", dueOn: c.addDays(today, 40) });
+  await assert.rejects(store.addTask("aquila", id, { title: "x", dueOn: "tomorrow" }), /due date/);
+  assert.ok(!(await store.needsFollowUp("aquila")).some((x) => x.id === id), "now has open tasks");
+  const g = await store.dueTasks("aquila", today, 7, c.addDays);
+  assert.ok(g.overdue.some((t) => t.id === overdue));
+  assert.ok(g.today.some((t) => t.id === due));
+  assert.ok(g.upcoming.some((t) => t.id === soon));
+  assert.ok(!g.upcoming.some((t) => t.title === "Far away"), "beyond the window");
+  await store.setTaskDue("aquila", overdue, c.addDays(today, 1));
+  assert.ok(!(await store.dueTasks("aquila", today, 7, c.addDays)).overdue.some((t) => t.id === overdue), "snoozed out of overdue");
+  assert.equal(await store.completeTask("aquila", due), true);
+  assert.equal(await store.completeTask("aquila", due), false, "cannot complete twice");
+  assert.ok((await store.listActivities("aquila", id)).some((a) => /Task done: Send the invoice/.test(a.body)));
+  assert.ok((await store.tasksForLead("aquila", id)).find((x) => x.id === due).done_at);
+});
+
+test("pipeline counts only people you are dealing with, not every scanned business", async () => {
+  const scanned = (await store.listLeads("aquila", { bucket: "no_website" })).find((l) => l.source === "kestrel" && l.stage === "new" && !l.draft_status);
+  assert.ok(scanned, "a plain scanned business exists");
+  const before = (await store.stageCounts("aquila")).new || 0;
+  const rows = await store.leadsByStage("aquila", "new", 100);
+  assert.ok(!rows.some((r) => r.id === scanned.id), "scanned business is not on the board");
+  await store.saveDraft("aquila", scanned.id, { subject: "Hello there", body: "A long enough body for the draft to save properly." });
+  assert.equal((await store.stageCounts("aquila")).new, before + 1, "a draft brings it into the pipeline");
+  assert.ok((await store.leadsByStage("aquila", "new", 100)).some((r) => r.id === scanned.id));
+  const lf = await import("../lib/leadfilters.js");
+  assert.equal(lf.parseFilters({ stage: "won" }).stage, "won");
+  assert.equal(lf.parseFilters({ stage: "x" }).stage, "any");
+  const replied = lf.parseFilters({ site: "any", stage: "replied" });
+  assert.ok((await store.countLeadsFiltered("aquila", replied)) >= 1);
+});
+
+test("crm data is isolated per brand", async () => {
+  const id = await store.createContact("aquila", { name: "Brand A Contact", source: "manual" });
+  const task = await store.addTask("aquila", id, { title: "Private", dueOn: "2030-01-01" });
+  assert.equal(await store.getLead("other", id), null);
+  assert.deepEqual(await store.listActivities("other", id), []);
+  assert.deepEqual(await store.tasksForLead("other", id), []);
+  await assert.rejects(store.addTask("other", id, { title: "Sneaky", dueOn: "2030-01-01" }), /Contact not found/);
+  await assert.rejects(store.setStage("other", id, "won"), /Contact not found/);
+  assert.equal(await store.completeTask("other", task), false);
+  assert.ok(!(await store.dueTasks("other", "2030-01-01", 7, (await import("../lib/crm.js")).addDays)).today.some((x) => x.id === task));
+  assert.equal((await store.getLead("aquila", id)).stage, "new", "untouched");
+});
+
+test("opening an existing database again keeps it and maps old statuses to stages", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { openLocal } = await import("../lib/db.js");
+  const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kestrel-mig2-")), "pglite");
+  const a = await openLocal(dir);
+  const ins = (pid, status) => a.query("INSERT INTO leads (brand_id, place_id, name, bucket, mockup_token, status, first_seen_at, last_seen_at) VALUES ('aquila', $1, $1, 'no_website', $1, $2, 'n', 'n')", [pid, status]);
+  await ins("old1", "contacted");
+  await ins("old2", "do_not_contact");
+  await ins("old3", "new");
+  await a.exec("UPDATE leads SET stage = 'new'"); // as if the column had just been added
+  await a.close();
+  const b = await openLocal(dir); // runs the schema again: must be safe to repeat
+  const rows = (await b.query("SELECT place_id, stage FROM leads ORDER BY place_id")).rows;
+  assert.deepEqual(rows.map((r) => r.stage), ["contacted", "not_interested", "new"]);
+  await b.close();
+});

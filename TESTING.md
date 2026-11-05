@@ -12,7 +12,11 @@ Website classification, Places response normalization and pagination, dedupe on 
 ## Manual, auth (performed in the in-app browser against a dev server)
 First-run setup, wrong password message with email kept, two-factor enrollment (QR and key shown), sign in with a wrong then right code, forgot password (identical answer for known and unknown emails, one email in the outbox), reset with weak, common and mismatched passwords then success, reused link rejected, signed-out and forged-cookie requests redirected.
 
+## CRM core (performed)
+Unit tests (42 in total) cover stages and the status sync, manual contacts without a place id, the append-only timeline, not-interested and unsubscribe suppression, send moving a contact to contacted, task groups for Today, snooze and completion, the pipeline membership rule, brand isolation, and re-opening an existing database with the new schema. In the browser: added a contact, set a stage, added a follow-up, viewed Today and Pipeline against a database that had the older schema.
+
 ## Not performed
+- CRM screens at phone width, keyboard-only and screen reader checks, concurrent edits.
 - Lockout, invitation, user management and session revoke screens were covered by unit tests only, not clicked through.
 - Recovery code display after enrollment was fixed after a bug was found; the fix was not re-run in the browser.
 - Real email delivery of reset and invite links; authenticator app scanning of the QR code (the same key was used to compute codes instead).

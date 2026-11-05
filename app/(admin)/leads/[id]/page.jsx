@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth";
+import CrmPanels from "@/components/CrmPanels";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Flash from "@/components/Flash";
@@ -60,7 +61,7 @@ export default async function LeadPage({ params, searchParams }) {
           ["Phone", lead.phone],
           ["Address", lead.address],
           ["Website in listing", lead.website || "None listed"],
-          ["Bucket", isNoSite ? `No website${lead.website_kind === "social" ? " (social page only)" : ""}` : "Has website"],
+          ["Bucket", lead.bucket === "unknown" ? "Not checked" : isNoSite ? `No website${lead.website_kind === "social" ? " (social page only)" : ""}` : "Has website"],
         ].map(([k, v]) => (
           <div key={k}>
             <dt className="text-sm font-semibold text-muted">{k}</dt>
@@ -74,6 +75,8 @@ export default async function LeadPage({ params, searchParams }) {
           </div>
         )}
       </dl>
+
+      <CrmPanels lead={lead} />
 
       <section aria-labelledby="contact-h" className="mt-8 border border-line bg-surface p-5">
         <h2 id="contact-h" className="text-2xl font-semibold">Contact and notes</h2>
@@ -180,7 +183,7 @@ export default async function LeadPage({ params, searchParams }) {
             )}
           </section>
         </>
-      ) : (
+      ) : lead.bucket === "unknown" ? null : (
         <p className="mt-8 text-muted">This business already lists a website, so no mockup or outreach is created. It stays here as a future redesign lead.</p>
       )}
     </div>

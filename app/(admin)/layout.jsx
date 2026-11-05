@@ -6,8 +6,10 @@ export default async function AdminLayout({ children }) {
   // Pages and actions check again on their own: layouts are not re-run on every client navigation.
   const user = await requireUser({ allowUnenrolled: true });
   const links = [
-    ["/", "Overview"],
+    ["/today", "Today"],
+    ["/pipeline", "Pipeline"],
     ["/leads", "Leads"],
+    ["/", "Scanner"],
     ["/queue", "Review queue"],
     ["/optouts", "Opt-outs"],
     ...(isManager(user) ? [["/users", "Users"], ["/audit", "Audit"]] : []),

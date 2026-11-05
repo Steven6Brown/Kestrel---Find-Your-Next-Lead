@@ -18,6 +18,16 @@
 
 **Auth scope decisions:** roles are owner, administrator, member, scoped per brand. Email verification is covered by the invitation link and first-run setup rather than a separate verify step. No self-service signup.
 
+**CRM core (branch crm-core), assumptions:**
+- Non-Kestrel contacts (referrals, seminar contacts, website inquiries, manual adds) reuse the `leads` table, with `source`, `stage`, `owner_notes` added and `place_id` made optional. Manual contacts use bucket `unknown`. Chosen over a second `contacts` table to keep one pipeline and one timeline; reversible because every CRM query goes through `lib/store.js`.
+- Replies are logged by hand for now. The timeline (`activities`, append only, no edit or delete) is shaped so an inbound connector can add `email_in` events later.
+- Stages: new, contacted, replied, meeting_booked, proposal_sent, won, lost, not_interested. The older `status` column is kept in step (`statusForStage`) because scanning and sending still use it. Sending a draft moves `new` to `contacted`. Not interested, and any opt-out, writes to `suppressions` and rejects pending drafts.
+- Follow-ups are `tasks` with a plain calendar day (`due_on`, local time), not a timestamp. There is no separate follow-up column on leads; the next follow-up is the earliest open task.
+- The pipeline board shows people you are dealing with. A scanned business joins it once it has an outreach draft, so thousands of scanned businesses do not drown it.
+- Every new table carries `brand_id` and every query filters on it (tested).
+
+**CRM, deferred (not built yet, documented here so it is not silent scope):** clients and projects, manual meeting logging and a meetings list, CSV export of contacts and payments, the connector framework, the scheduler and booking page, PayPal invoicing, the inbound website form connector, automatic reply logging, contact export and delete, retention rules. See KESTREL-CRM-HANDOFF-BRIEF.md for the plan and the open questions.
+
 **Out of scope for v1:** auto-send, multi-tenant logins, billing, a brand picker UI, email finding or enrichment, follow-up sequences, reply tracking.
 
 ## Layout

@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import Flash from "@/components/Flash";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
 import { countLeadsFiltered, leadFacets, searchLeads } from "@/lib/store";
-import { CHECK, PAGE_SIZE, PHONE, SITE, STATUS, hrefWith, parseFilters } from "@/lib/leadfilters";
+import { CHECK, PAGE_SIZE, PHONE, SITE, STAGE_FILTER, STATUS, hrefWith, parseFilters } from "@/lib/leadfilters";
 import { draftFilteredAction, siteCheckAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +58,7 @@ export default async function Leads({ searchParams }) {
           <Chips label="Phone number" options={PHONE} value={f.phone} f={f} field="phone" />
           <Chips label="Website check" options={CHECK} value={f.check} f={f} field="check" />
         </div>
+        <Chips label="Pipeline stage" options={STAGE_FILTER} value={f.stage} f={f} field="stage" />
         <Chips label="Status" options={STATUS} value={f.status} f={f} field="status" />
         <fieldset className="min-w-0">
           <legend className="eyebrow !text-muted">Ready for outreach</legend>
@@ -95,7 +96,7 @@ export default async function Leads({ searchParams }) {
           <h2 id="res-h" className="text-2xl font-semibold">{total.toLocaleString()} {total === 1 ? "business" : "businesses"}</h2>
           <div className="flex flex-wrap gap-2">
             <form action={draftFilteredAction}>
-              {Object.entries({ site: f.site, phone: f.phone, check: f.check, status: f.status, ready: f.ready, category: f.category, city: f.city }).map(([k, v]) => (
+              {Object.entries({ site: f.site, phone: f.phone, check: f.check, status: f.status, stage: f.stage, ready: f.ready, category: f.category, city: f.city }).map(([k, v]) => (
                 <input key={k} type="hidden" name={k} value={v} />
               ))}
               <button type="submit" className="btn btn-primary">Create outreach drafts for ready leads here</button>
@@ -116,7 +117,7 @@ export default async function Leads({ searchParams }) {
               </thead>
               <tbody>
                 {rows.map((l) => {
-                  const needsCheck = l.bucket === "no_website" && l.place_id.startsWith("osm:") && l.site_check === "unchecked";
+                  const needsCheck = l.bucket === "no_website" && l.place_id?.startsWith("osm:") && l.site_check === "unchecked";
                   const q = new URLSearchParams({ q: [l.name, l.city, l.region].filter(Boolean).join(" ") });
                   return (
                     <tr key={l.id} className="border-b border-line align-top last:border-b-0">

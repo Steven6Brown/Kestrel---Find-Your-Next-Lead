@@ -15,6 +15,13 @@
 | Audit log | Sign-ins, failures, lockouts, resets, password and two-factor changes, invitations, role and status changes. Owners and administrators can read it. |
 | Enforcement | `proxy.js` redirects signed-out visitors; every page and every server action re-checks the session in the database (`requireUser`). Sending email needs owner or administrator. Server actions also get Next.js origin checks (CSRF). |
 
+## CRM
+
+- Every CRM read and write is scoped by `brand_id` in the store layer, and a test confirms another brand cannot read, change, or complete a contact's timeline, tasks, or stage.
+- Server actions validate with zod and allowlists (stage, source, activity kind, quick due dates); free text is length limited and rendered escaped.
+- The timeline is append only: there is no edit or delete path.
+- Marking someone not interested suppresses their address and rejects pending drafts.
+
 ## Other controls
 
 - Secrets only in environment variables; `.env*` and `data/` are git-ignored.

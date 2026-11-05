@@ -1,10 +1,11 @@
-import { requireUser } from "@/lib/auth";
 import Link from "next/link";
 import { Suspense } from "react";
+import { requireUser } from "@/lib/auth";
 import Flash from "@/components/Flash";
+import SelectAll from "@/components/SelectAll";
 import { ChipCheckbox, ChipGroup, ChipRadio } from "@/components/Chips";
 import { createCampaignAction } from "../../actions";
-import { CATEGORY_GROUPS, FREQUENCIES, RUN_TIMES, STATES, titleCase } from "@/lib/campaigns";
+import { FREQUENCIES, MAX_AREA_LOCATIONS, RUN_TIMES, STATES } from "@/lib/campaigns";
 import { citiesForState } from "@/lib/geo";
 
 export const dynamic = "force-dynamic";
@@ -27,11 +28,14 @@ async function CityChips({ code }) {
     );
   }
   return (
-    <ChipGroup legend="Cities" hint="Largest first. Pick up to 10.">
-      {cities.map((c) => (
-        <ChipCheckbox key={c.name} name="locations" value={`${c.name}, ${code}`} label={c.name} form="campaign-form" />
-      ))}
-    </ChipGroup>
+    <>
+      <SelectAll name="locations" form="campaign-form" label="cities" />
+      <ChipGroup legend="Cities" hint={`Largest first. Pick up to ${MAX_AREA_LOCATIONS}. Every business in each city is scanned.`}>
+        {cities.map((c) => (
+          <ChipCheckbox key={c.name} name="locations" value={`${c.name}, ${code}`} label={c.name} form="campaign-form" />
+        ))}
+      </ChipGroup>
+    </>
   );
 }
 
@@ -45,8 +49,11 @@ export default async function NewCampaign({ searchParams }) {
     <div className="reveal">
       <p><Link href="/" className="inline-flex min-h-[44px] items-center text-muted underline underline-offset-4 hover:text-brand-hover">Back to overview</Link></p>
       <p className="eyebrow mt-2">New campaign</p>
-      <h1 className="mt-1 text-4xl font-semibold">Pick what to scan for</h1>
-      <p className="mt-2 max-w-2xl text-muted">Everything here is a choice, nothing to type. The campaign is named for you and can re-run on a schedule.</p>
+      <h1 className="mt-1 text-4xl font-semibold">Where should Kestrel scan?</h1>
+      <p className="mt-2 max-w-2xl text-muted">
+        Pick the cities. Kestrel collects every business it can find there, with or without a website, into your Leads database.
+        You filter and choose the leads afterwards, so there is no business type to decide up front.
+      </p>
       <div className="mt-4"><Flash sp={sp} /></div>
 
       <section aria-labelledby="st-h" className="mt-6">
@@ -71,23 +78,16 @@ export default async function NewCampaign({ searchParams }) {
       {code ? (
         <form id="campaign-form" action={createCampaignAction} className="mt-8 space-y-8">
           <input type="hidden" name="state" value={code} />
-          <Suspense fallback={<p role="status" className="text-muted">Loading cities for {stateName}. The first load can take up to a minute.</p>}>
-            <CityChips code={code} />
-          </Suspense>
-
-          <div className="space-y-6">
-            <h2 className="text-lg font-semibold">2. Business types</h2>
-            {CATEGORY_GROUPS.map(([group, keys]) => (
-              <ChipGroup key={group} legend={group}>
-                {keys.map((k) => <ChipCheckbox key={k} name="categories" value={k} label={titleCase(k)} />)}
-              </ChipGroup>
-            ))}
-            <p className="text-sm text-muted">Up to 8 types, and no more than 40 searches in total (types times cities).</p>
+          <div>
+            <h2 className="mb-3 text-lg font-semibold">2. Cities</h2>
+            <Suspense fallback={<p role="status" className="text-muted">Loading cities for {stateName}. The first load can take up to a minute.</p>}>
+              <CityChips code={code} />
+            </Suspense>
           </div>
 
           <div className="space-y-6">
             <h2 className="text-lg font-semibold">3. Schedule</h2>
-            <ChipGroup legend="How often" hint="Scheduled runs use Windows Task Scheduler. You get a one-line command to set that up after saving.">
+            <ChipGroup legend="How often" hint="Scheduled runs use Windows Task Scheduler. You get a one-line command to set that up after saving. Rescans skip areas done in the last 7 days.">
               {FREQUENCIES.map(([k, l], i) => <ChipRadio key={k} name="frequency" value={k} label={l} defaultChecked={i === 0} />)}
             </ChipGroup>
             <ChipGroup legend="Time of day">

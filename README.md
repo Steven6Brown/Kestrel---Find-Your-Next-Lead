@@ -57,6 +57,12 @@ Brand data lives in `config/brands.js` and is passed as a `brand` object to the 
 
 Mockup and opt-out links must be publicly reachable, so the app has to be hosted before real email goes out. Note that the in-memory rate limiter and send lock are per serverless instance.
 
+## Campaigns and the Leads database
+
+A campaign is just where to scan: pick a state, tick the cities (or Select all), choose a schedule. Kestrel then collects **every named business** in those cities, with or without a website, into one database. There is no business type to decide up front.
+
+The **Leads** page is where you decide who becomes a lead. Narrow the list with buttons: website (none, social page only, has one), phone number, website check, status, ready for outreach, business type and city (with counts). Then create outreach drafts for the ready leads in that view, or download the view as a CSV. A scan is split into six business families per city, remembers what it finished, and a rerun skips anything scanned in the last 7 days, so a scan that hit its time limit simply continues next time.
+
 ## Where your data lives
 
 The local database, generated secret and mail outbox are kept in %LOCALAPPDATA%\Kestrel (override with `KESTREL_DATA_DIR`), not in the project folder, because this project sits under OneDrive and cloud sync can damage a database's many small files. On the first start of a version that does this, existing data from the old `data\pglite` folder is copied over automatically and the old copy is left as a backup.
@@ -67,7 +73,7 @@ Scans use the free OpenStreetMap servers, which are sometimes slow or busy (one 
 
 ## Scheduled scans (Windows Task Scheduler)
 
-Campaigns are picked with buttons only (state, cities, business types, schedule). Open a campaign and the page shows the exact one-line command to register it, for example:
+Campaigns are picked with buttons only (state, cities, schedule). Open a campaign and the page shows the exact one-line command to register it, for example:
 
 ```powershell
 .\scripts\register-task.ps1 -CampaignId 1 -Schedule Daily -Time 06:00

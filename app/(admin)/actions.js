@@ -7,10 +7,12 @@ import { DEFAULT_BRAND_ID, getBrand } from "@/config/brands";
 import * as store from "@/lib/store";
 import { after } from "next/server";
 import { startRun } from "@/lib/runner";
-import { campaignName, validateCampaign } from "@/lib/campaigns";
+import { areaCampaignName, validateAreaCampaign } from "@/lib/campaigns";
 import { buildDraft, isValidEmail, sendProblems, sendViaResend } from "@/lib/email";
 import { mockupUrl } from "@/lib/tokens";
 import { requireUser } from "@/lib/auth";
+import { parseFilters } from "@/lib/leadfilters";
+import { safeNext } from "@/lib/safeNext";
 
 // All inputs are validated here, at the server trust boundary.
 const BRAND = DEFAULT_BRAND_ID;
@@ -24,18 +26,16 @@ const id = z.coerce.number().int().positive();
 
 export async function createCampaignAction(formData) {
   await requireUser();
-  const v = validateCampaign({
-    categories: formData.getAll("categories").map(String),
+  const v = validateAreaCampaign({
     locations: formData.getAll("locations").map(String),
     frequency: String(formData.get("frequency") || "manual"),
     run_time: String(formData.get("run_time") || "06:00"),
   });
   const state = /^[A-Z]{2}$/.test(String(formData.get("state"))) ? String(formData.get("state")) : "";
   if (!v.ok) done(`/campaigns/new${state ? `?state=${state}` : ""}`, v.error, "bad");
-  const name = campaignName(v.value.categories, v.value.locations);
-  const newId = await store.createCampaign(BRAND, { name, ...v.value });
+  const newId = await store.createCampaign(BRAND, { name: areaCampaignName(v.value.locations), ...v.value });
   revalidatePath("/", "layout");
-  done(`/campaigns/${newId}`, "Campaign saved.");
+  done(`/campaigns/${newId}`, "Campaign saved. Press Run now to start scanning.");
 }
 
 export async function runCampaignAction(formData) {
@@ -86,7 +86,9 @@ export async function siteCheckAction(formData) {
   const verdict = z.enum(["confirmed_none", "has_site"]).parse(formData.get("verdict"));
   await store.setSiteCheck(BRAND, leadId, verdict);
   revalidatePath("/", "layout");
-  done(`/leads/${leadId}`, verdict === "confirmed_none" ? "Marked as confirmed: no website. You can now draft outreach." : "Marked as having a website. It moved to the redesign list.");
+  const backTo = String(formData.get("back") || "");
+  const dest = backTo.startsWith("/leads") ? safeNext(backTo, `/leads/${leadId}`) : `/leads/${leadId}`;
+  done(dest, verdict === "confirmed_none" ? "Marked as confirmed: no website. You can now draft outreach." : "Marked as having a website. It moved to the redesign list.");
 }
 
 export async function createDraftAction(formData) {
@@ -184,4 +186,14 @@ export async function addSuppressionAction(formData) {
   await store.addSuppression(BRAND, email, "manual (reply or request)");
   revalidatePath("/", "layout");
   done("/optouts", "Added. This address will never be emailed again.");
+}
+
+/** Create drafts for every lead in the current filter that is ready and has no draft yet (up to 200). */
+export async function draftFilteredAction(formData) {
+  await requireUser();
+  const f = parseFilters(Object.fromEntries(formData));
+  const leads = await store.draftableInFilter(BRAND, f, 200);
+  for (const lead of leads) await makeDraft(lead);
+  revalidatePath("/", "layout");
+  done("/queue", leads.length ? `Created ${leads.length} draft(s) from your filter. Review them here before anything is sent.` : "No ready leads in this filter need a draft. Leads from OpenStreetMap must be checked first.", leads.length ? "ok" : "bad");
 }

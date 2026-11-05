@@ -35,8 +35,8 @@ export default async function CampaignPage({ params, searchParams }) {
 
       <dl className="card grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2">
         <div>
-          <dt className="eyebrow !text-muted">Business types</dt>
-          <dd className="mt-1">{c.categories.map(titleCase).join(", ")}</dd>
+          <dt className="eyebrow !text-muted">What it scans</dt>
+          <dd className="mt-1">{c.categories[0] === "all" ? "Every business in the cities below, with or without a website" : c.categories.map(titleCase).join(", ")}</dd>
         </div>
         <div>
           <dt className="eyebrow !text-muted">Cities</dt>

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.0
+- Campaigns now scan every business in the chosen cities (no business types). New filterable Leads database with counts, CSV download, bulk outreach drafts from a filter, and inline website checks. Resumable scans.
+
 ## 0.5.0
 - Fixed the database being treated as damaged after every unclean stop (stale lock file), which made the app ask to create an account again. Data moves to the app data folder outside OneDrive and existing data is migrated automatically.
 - Scan progress shown live, 25 minute limit, early stop after repeated server failures, cut-off scans marked interrupted.

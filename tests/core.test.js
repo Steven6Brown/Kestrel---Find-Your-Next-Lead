@@ -14,7 +14,7 @@ process.env.RESEND_API_KEY = "test-key";
 const { classifyWebsite } = await import("../lib/sites.js");
 const { normalizePlace, searchPlaces } = await import("../lib/places.js");
 const store = await import("../lib/store.js");
-const { runDiscovery } = await import("../lib/discovery.js");
+const { runDiscovery, runAreaDiscovery } = await import("../lib/discovery.js");
 const { buildDraft, sendProblems, resolveBody, sendViaResend } = await import("../lib/email.js");
 const { getBrand } = await import("../config/brands.js");
 const { verifyUnsubscribe, signUnsubscribe, mockupUrl } = await import("../lib/tokens.js");
@@ -492,4 +492,109 @@ test("a scan cut off by stopping the app is closed out on the next start", async
   assert.match(run.error, /stopped/);
   process.env.PGLITE_DIR = prev;
   delete globalThis.__kestrelDb;
+});
+
+// ---------------- area campaigns and the leads database ----------------
+
+test("area scanning helpers: categories from tags, queries, no business type needed", async () => {
+  const o = await import("../lib/overpass.js");
+  assert.equal(o.categoryFromTags({ shop: "hairdresser", amenity: "x" }), "hairdresser");
+  assert.equal(o.categoryFromTags({ amenity: "fast_food" }), "fast_food");
+  assert.equal(o.categoryFromTags({ shop: "yes" }), "");
+  assert.equal(o.categoryLabel("fast_food"), "Fast Food");
+  const p = o.normalizeElement({ type: "node", id: 9, tags: { name: "Joe's", amenity: "fast_food", website: "https://joes.example" } }, { cityFallback: "Erie" });
+  assert.equal(p.category, "fast_food");
+  assert.equal(p.category_label, "Fast Food");
+  assert.equal(p.bucket, "has_website");
+  const q = o.buildAreaQuery(o.AREA_FAMILIES.shops, { area: 3600000123 });
+  assert.ok(q.includes("area(3600000123)") && q.includes('nwr["shop"]["name"](area.a)'));
+  assert.ok(Object.keys(o.AREA_FAMILIES).length >= 6);
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push(String(url));
+    if (String(url).startsWith(o.NOMINATIM)) return { ok: true, json: async () => [{ osm_type: "relation", osm_id: 5, name: "Erie" }] };
+    return { ok: true, json: async () => ({ elements: [{ type: "node", id: 1, tags: { name: "A Shop", shop: "bakery" } }, { type: "node", id: 2, tags: { name: "A Shop", shop: "bakery", website: "https://a.example" } }] }) };
+  };
+  const places = await o.searchArea({ location: "Erie, PA", family: "shops", fetchImpl });
+  assert.equal(places.length, 1, "website-less twin merged away");
+  assert.throws(() => { throw new Error("x"); });
+  await assert.rejects(o.searchArea({ location: "Erie, PA", family: "nope", fetchImpl }), /Unknown business family/);
+});
+
+test("area campaigns validate cities only and resume instead of repeating work", async () => {
+  const c = await import("../lib/campaigns.js");
+  assert.ok(c.validateAreaCampaign({ locations: ["Erie, PA"], frequency: "daily", run_time: "06:00" }).ok);
+  assert.deepEqual(c.validateAreaCampaign({ locations: ["Erie, PA"] }).value.categories, ["all"]);
+  assert.equal(c.validateAreaCampaign({ locations: [] }).ok, false);
+  assert.equal(c.validateAreaCampaign({ locations: ["Nowhere, ZZ"] }).ok, false);
+  assert.equal(c.validateAreaCampaign({ locations: Array.from({ length: 26 }, (_, i) => "Town " + i + ", PA") }).ok, false);
+  assert.equal(c.areaCampaignName(["Erie, PA", "Akron, OH"]), "All businesses in Erie, PA +1");
+
+  const id = await store.createCampaign("aquila", { name: "Area", categories: ["all"], locations: ["Erie, PA", "Akron, OH"], frequency: "manual", run_time: "06:00" });
+  const seen = [];
+  let n = 100;
+  const search = async ({ location, family }) => {
+    seen.push(location + "|" + family);
+    n++;
+    return [{ place_id: "g:" + n, name: "Biz " + n, category: "bakery", category_label: "Bakery", address: "", city: location.split(",")[0], region: "XX", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website" }];
+  };
+  const first = await runAreaDiscovery({ brandId: "aquila", campaignId: id, locations: ["Erie, PA", "Akron, OH"], search, deadlineMs: -1 });
+  assert.equal(seen.length, 0);
+  assert.match(first.stopped, /minute limit/);
+  assert.equal(first.total, 12);
+  const second = await runAreaDiscovery({ brandId: "aquila", campaignId: id, locations: ["Erie, PA", "Akron, OH"], search });
+  assert.equal(seen.length, 12, "two cities x six families");
+  assert.equal(second.attempted, 12);
+  const third = await runAreaDiscovery({ brandId: "aquila", campaignId: id, locations: ["Erie, PA", "Akron, OH"], search });
+  assert.equal(seen.length, 12, "everything was scanned this week, so nothing repeats");
+  assert.equal(third.attempted, 12);
+  // a run that fails partway keeps what finished and picks up the rest later
+  const id2 = await store.createCampaign("aquila", { name: "Area2", categories: ["all"], locations: ["Mercer, PA"], frequency: "manual", run_time: "06:00" });
+  let calls = 0;
+  const flaky = async (a) => { calls++; if (calls <= 2) throw new Error("busy"); return search(a); };
+  const r1 = await runAreaDiscovery({ brandId: "aquila", campaignId: id2, locations: ["Mercer, PA"], search: flaky });
+  assert.equal(r1.errors.length, 2);
+  assert.equal(r1.searches, 4);
+  const r2 = await runAreaDiscovery({ brandId: "aquila", campaignId: id2, locations: ["Mercer, PA"], search: async (a) => search(a) });
+  assert.equal(r2.attempted, 6);
+  assert.equal(r2.searches, 2, "only the two failed parts were retried");
+  const { isAreaCampaign } = await import("../lib/runner.js");
+  assert.equal(isAreaCampaign({ categories: ["all"] }), true);
+  assert.equal(isAreaCampaign({ categories: ["plumber"] }), false);
+});
+
+test("leads database filters, facets, drafts-in-filter, and CSV are safe and correct", async () => {
+  const lf = await import("../lib/leadfilters.js");
+  const d = lf.parseFilters({});
+  assert.equal(d.site, "none");
+  assert.equal(lf.parseFilters({ site: "drop table" }).site, "none", "unknown values fall back");
+  assert.equal(lf.parseFilters({ category: "bad value;" }).category, "");
+  const evil = lf.parseFilters({ city: "x'; DROP TABLE leads;--" });
+  const w = lf.buildWhere("aquila", evil);
+  assert.ok(!w.where.includes("DROP"), "never interpolated");
+  assert.ok(w.args.includes("x'; DROP TABLE leads;--"), "passed as a parameter");
+  assert.equal(lf.hrefWith("/leads", lf.parseFilters({}), { site: "has", category: "bakery" }), "/leads?site=has&category=bakery");
+  assert.equal(lf.hrefWith("/leads", lf.parseFilters({ site: "none" }), {}), "/leads");
+  assert.equal(lf.csvCell('=cmd|"x"'), "\"'=cmd|\"\"x\"\"\"");
+  assert.equal(lf.csvCell(null), '""');
+
+  const all = lf.parseFilters({ site: "any" });
+  const total = await store.countLeadsFiltered("aquila", all);
+  assert.ok(total > 10);
+  const none = lf.parseFilters({ site: "none" });
+  const has = lf.parseFilters({ site: "has" });
+  const nNone = await store.countLeadsFiltered("aquila", none);
+  const nHas = await store.countLeadsFiltered("aquila", has);
+  assert.equal(nNone + nHas, total, "every business is in exactly one bucket");
+  const page = await store.searchLeads("aquila", none, { limit: 5, offset: 0 });
+  assert.equal(page.length, 5);
+  const facets = await store.leadFacets("aquila", all);
+  assert.ok(facets.categories.some((c) => c.value === "bakery"));
+  assert.ok(facets.cities.length >= 1);
+  const bakery = lf.parseFilters({ site: "any", category: "bakery" });
+  assert.equal(await store.countLeadsFiltered("aquila", bakery), facets.categories.find((c) => c.value === "bakery").n);
+  // drafts in a filter respect the readiness gate: google style ids are ready, unchecked OSM ones are not
+  const ready = await store.draftableInFilter("aquila", lf.parseFilters({ site: "none" }), 500);
+  assert.ok(ready.every((x) => store.outreachReady(x)));
+  assert.ok(ready.length > 0);
 });

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0 (branch crm-core)
+- Redesign targets page: a free quality check scores each lead's own website out of 100 (HTTPS, phone layout, page structure, image descriptions, current code, speed, contact links, freshness, search and sharing tags) and lists sites below a cutoff you pick (50, 60, 70 or 80) with plain reasons. Optional free PageSpeed key adds Google's measured scores.
+- Sites that block automated visitors, do not load, or are built entirely with scripts are not scored. National chains, franchise pages and directory or booking listings are skipped.
+- The Leads page now counts how many leads a website check would actually look up.
+
 ## 1.2.0 (branch crm-core)
 - Free website check: looks each unverified OpenStreetMap lead up in Overture Maps (open data, no account or billing) and moves leads that already have a website out of the no-website list. Social-only pages stay as "Social page only". Leads stay unverified when nothing is found. Leads now store coordinates.
 

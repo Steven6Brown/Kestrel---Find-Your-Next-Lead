@@ -8,6 +8,7 @@ import * as store from "@/lib/store";
 import { after } from "next/server";
 import { startRun } from "@/lib/runner";
 import { startVerification } from "@/lib/verify";
+import { startAudit } from "@/lib/auditrun";
 import { areaCampaignName, validateAreaCampaign } from "@/lib/campaigns";
 import { buildDraft, isValidEmail, sendProblems, sendViaResend } from "@/lib/email";
 import { mockupUrl } from "@/lib/tokens";
@@ -203,9 +204,20 @@ export async function draftFilteredAction(formData) {
 /** Look up every unverified lead in the free open dataset, in the background. */
 export async function verifyWebsitesAction() {
   await requireUser();
+  if ((await store.countWaitingForLookup(BRAND)) === 0) done("/leads", "Nothing new to look up. Businesses that were already looked up and not found stay unverified until you check them by hand.", "bad");
   const r = await startVerification({ brandId: BRAND });
   if (r.skipped) done("/leads", r.reason, "bad");
   after(() => r.done);
   revalidatePath("/", "layout");
   done("/leads", "Website check started. Progress shows below and on the Scanner page under Recent runs. It usually takes a few minutes.");
+}
+
+/** Score the websites of every lead that has one, in the background. */
+export async function auditWebsitesAction() {
+  await requireUser();
+  const r = await startAudit({ brandId: BRAND });
+  if (r.skipped) done("/redesign", r.reason, "bad");
+  after(() => r.done);
+  revalidatePath("/", "layout");
+  done("/redesign", "Website quality check started. Progress shows below and on the Scanner page under Recent runs.");
 }

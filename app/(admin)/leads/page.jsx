@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import Flash from "@/components/Flash";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
 import AutoRefresh from "@/components/AutoRefresh";
-import { countLeadsFiltered, countUnverified, leadFacets, runningVerification, searchLeads } from "@/lib/store";
+import { countLeadsFiltered, countUnverified, countWaitingForLookup, leadFacets, runningVerification, searchLeads } from "@/lib/store";
 import { CHECK, PAGE_SIZE, PHONE, SITE, STAGE_FILTER, STATUS, hrefWith, parseFilters } from "@/lib/leadfilters";
 import { draftFilteredAction, siteCheckAction, verifyWebsitesAction } from "../actions";
 
@@ -36,7 +36,7 @@ export default async function Leads({ searchParams }) {
   await requireUser();
   const sp = await searchParams;
   const f = parseFilters(sp);
-  const [unverified, running] = await Promise.all([countUnverified(DEFAULT_BRAND_ID), runningVerification(DEFAULT_BRAND_ID)]);
+  const [unverified, waiting, running] = await Promise.all([countUnverified(DEFAULT_BRAND_ID), countWaitingForLookup(DEFAULT_BRAND_ID), runningVerification(DEFAULT_BRAND_ID)]);
   const [total, rows, facets] = await Promise.all([
     countLeadsFiltered(DEFAULT_BRAND_ID, f),
     searchLeads(DEFAULT_BRAND_ID, f, { limit: PAGE_SIZE, offset: (f.page - 1) * PAGE_SIZE }),
@@ -62,10 +62,10 @@ export default async function Leads({ searchParams }) {
         <p className="mt-2 text-ink">
           {running
             ? `Checking now: ${running.searches} of ${running.total_searches} areas done, ${running.found} businesses checked, ${running.has_website} found with a website so far.`
-            : `${unverified.toLocaleString()} business(es) are still unverified.`}
+            : `${unverified.toLocaleString()} business(es) are still unverified. ${waiting.toLocaleString()} ${waiting === 1 ? "has" : "have"} not been looked up yet${unverified > waiting ? `; the other ${(unverified - waiting).toLocaleString()} were looked up and not found, so check those by hand below` : ""}.`}
         </p>
         <form action={verifyWebsitesAction} className="mt-3">
-          <button type="submit" className="btn btn-primary" disabled={!!running || unverified === 0}>{running ? "Checking..." : "Check websites (free)"}</button>
+          <button type="submit" className="btn btn-primary" disabled={!!running || waiting === 0}>{running ? "Checking..." : "Check websites (free)"}</button>
         </form>
         <p className="mt-2 text-sm text-muted">Not finding a business there proves nothing, so it stays unverified until you check it yourself.</p>
       </section>

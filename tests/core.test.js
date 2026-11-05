@@ -1461,3 +1461,267 @@ test("starting a verification records a run and refuses a second at the same tim
   await failed.done;
   assert.equal((await store.listRuns("aquila")).find((x) => x.id === failed.runId).status, "error");
 });
+
+// ---------------- website quality audit (free) ----------------
+
+const GOOD_HTML = `<!doctype html><html lang="en"><head><title>Sunny Bakery | Fresh bread in Cleveland</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Family run bakery in Cleveland making fresh bread, pastries and custom cakes every morning since 1995.">
+<meta property="og:title" content="Sunny Bakery"><meta property="og:image" content="/og.png">
+<script type="application/ld+json">{"@type":"LocalBusiness","name":"Sunny Bakery"}</script></head>
+<body><h1>Sunny Bakery</h1><img src="a.jpg" alt="Loaves"><a href="tel:+12165550100">Call</a><footer>&copy; ${new Date().getFullYear()} Sunny Bakery</footer></body></html>`;
+const BAD_HTML = `<html><head></head><body><center><font size=3>Welcome</font></center><marquee>Sale</marquee>
+<table><tr><td><img src="a.gif"></td></tr></table><table></table><table></table><table></table><img src="b.gif">
+<p>Copyright 2009 Old Shop</p></body></html>`;
+
+test("the audit never touches private network addresses", async () => {
+  const a = await import("../lib/audit.js");
+  for (const ip of ["127.0.0.1", "10.1.2.3", "192.168.0.5", "172.16.0.1", "169.254.169.254", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:10.0.0.1", "100.64.0.1"]) assert.equal(a.isPrivateAddress(ip), true, ip);
+  for (const ip of ["8.8.8.8", "93.184.216.34", "2606:4700:4700::1111"]) assert.equal(a.isPrivateAddress(ip), false, ip);
+  await assert.rejects(a.fetchPage("http://127.0.0.1:1/"), { code: "EBLOCKED" });
+  await assert.rejects(a.fetchPage("http://169.254.169.254/latest/meta-data/"), { code: "EBLOCKED" });
+  await assert.rejects(a.fetchPage("ftp://example.com/"), { code: "EPROTO" });
+  // a name that resolves to a private address is refused at connection time
+  await assert.rejects(a.fetchPage("http://localhost:1/"), { code: "EBLOCKED" });
+  const r = await a.auditSite("http://localhost:1/");
+  assert.equal(r.status, "blocked");
+  assert.equal(r.score, null);
+});
+
+test("the audit fetcher follows redirects but checks every hop, and reads real pages", async () => {
+  const a = await import("../lib/audit.js");
+  const http = await import("node:http");
+  const server = http.createServer((req, res) => {
+    if (req.url === "/hop") { res.writeHead(302, { location: "http://169.254.169.254/x" }); res.end(); }
+    else if (req.url === "/loop") { res.writeHead(302, { location: "/loop" }); res.end(); }
+    else if (req.url === "/big") { res.writeHead(200, { "content-type": "text/html" }); res.end("x".repeat(2_000_000)); }
+    else if (req.url === "/deny") { res.writeHead(403); res.end("no"); }
+    else { res.writeHead(200, { "content-type": "text/html" }); res.end(GOOD_HTML); }
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const allowLocal = { lookup: (h, o, cb) => (o && o.all ? cb(null, [{ address: "127.0.0.1", family: 4 }]) : cb(null, "127.0.0.1", 4)) };
+  try {
+    const ok = await a.fetchPage(`http://localhost:${port}/`, allowLocal);
+    assert.equal(ok.status, 200);
+    assert.ok(ok.html.includes("Sunny Bakery") && ok.ms >= 0 && ok.bytes > 100);
+    await assert.rejects(a.fetchPage(`http://localhost:${port}/hop`, allowLocal), { code: "EBLOCKED" });
+    await assert.rejects(a.fetchPage(`http://localhost:${port}/loop`, allowLocal), { code: "EREDIRECT" });
+    await assert.rejects(a.fetchPage(`http://localhost:${port}/big`, allowLocal), { code: "ETOOBIG" });
+    const denied = await a.auditSite(`http://localhost:${port}/deny`, { fetchPageFn: (u) => a.fetchPage(u, allowLocal), psiFn: async () => null });
+    assert.equal(denied.status, "blocked");
+    assert.equal(denied.score, null, "a site that refuses robots is not scored");
+    const scored = await a.auditSite(`http://localhost:${port}/`, { fetchPageFn: (u) => a.fetchPage(u, allowLocal), psiFn: async () => null });
+    assert.equal(scored.status, "ok");
+    assert.ok(scored.score >= 85, "good page over plain http loses only the https points: " + scored.score);
+  } finally {
+    server.close();
+  }
+});
+
+test("scoring: a well built page scores high, an old one low, and reasons say why", async () => {
+  const a = await import("../lib/audit.js");
+  const good = a.analyzeHtml({ html: GOOD_HTML, finalUrl: "https://sunnybakery.example/", ms: 600, bytes: 4000 });
+  assert.equal(good.score, 100);
+  assert.equal(good.checks.reduce((n, c) => n + c.max, 0), 100, "weights add up to 100");
+  const bad = a.analyzeHtml({ html: BAD_HTML, finalUrl: "http://oldshop.example/", ms: 7000, bytes: 1_200_000 }, { year: 2026 });
+  assert.ok(bad.score <= 20, "old page scores low: " + bad.score);
+  const reasons = a.reasonsFrom(bad.checks);
+  assert.ok(reasons.length >= 4 && reasons.length <= 5);
+  assert.ok(reasons.some((r) => /mobile layout|tiny desktop/.test(r)));
+  assert.ok(reasons.some((r) => /outdated code/.test(r)));
+  assert.deepEqual(a.reasonsFrom(good.checks), []);
+  // pieces
+  const mid = a.analyzeHtml({ html: GOOD_HTML.replace(/<meta name="viewport"[^>]*>/, ""), finalUrl: "https://x.example/", ms: 600, bytes: 4000 });
+  assert.equal(mid.score, 85, "losing the viewport costs exactly its 15 points");
+  const noImgAlt = a.analyzeHtml({ html: GOOD_HTML.replace('alt="Loaves"', ""), finalUrl: "https://x.example/", ms: 600, bytes: 4000 });
+  assert.equal(noImgAlt.checks.find((c) => c.id === "alt").points, 0);
+  const emptyAlt = a.analyzeHtml({ html: GOOD_HTML.replace('alt="Loaves"', 'alt=""'), finalUrl: "https://x.example/", ms: 600, bytes: 4000 });
+  assert.equal(emptyAlt.checks.find((c) => c.id === "alt").points, 8, "empty alt is valid for decoration");
+  assert.equal(a.analyzeHtml({ html: "", finalUrl: "", ms: 0, bytes: 0 }).score >= 0, true, "empty input does not throw");
+});
+
+test("audit outcomes: unreachable and blocked sites are never scored; PageSpeed is optional", async () => {
+  const a = await import("../lib/audit.js");
+  const page = (o) => async () => ({ status: 200, html: GOOD_HTML, finalUrl: "https://x.example/", ms: 500, bytes: 4000, ...o });
+  const none = async () => null;
+  const dns = await a.auditSite("https://gone.example/", { fetchPageFn: async () => { throw Object.assign(new Error("x"), { code: "ENOTFOUND" }); }, psiFn: none });
+  assert.equal(dns.status, "unreachable");
+  assert.equal(dns.score, null);
+  const e404 = await a.auditSite("https://x.example/", { fetchPageFn: page({ status: 404 }), psiFn: none });
+  assert.equal(e404.status, "unreachable");
+  for (const status of [401, 403, 429]) assert.equal((await a.auditSite("https://x.example/", { fetchPageFn: page({ status }), psiFn: none })).status, "blocked");
+  const plain = await a.auditSite("https://x.example/", { fetchPageFn: page(), psiFn: none });
+  assert.equal(plain.score, 100);
+  const withPsi = await a.auditSite("https://x.example/", { fetchPageFn: page(), psiFn: async () => ({ performance: 40, accessibility: 60, bestPractices: 80, seo: 80 }) });
+  assert.equal(withPsi.score, 83, "average of the page checks (100) and Google's scores (65)");
+  assert.match(withPsi.reasons.join(" "), /speed at 40/);
+  assert.match(withPsi.reasons.join(" "), /accessibility at 60/);
+  // PageSpeed: no key means no call; a failing or odd response means null
+  let called = 0;
+  assert.equal(await a.pageSpeed("https://x.example/", { key: "", fetchImpl: async () => { called++; } }), null);
+  assert.equal(called, 0);
+  assert.equal(await a.pageSpeed("https://x.example/", { key: "k", fetchImpl: async () => ({ ok: false }) }), null);
+  assert.equal(await a.pageSpeed("https://x.example/", { key: "k", fetchImpl: async () => { throw new Error("offline"); } }), null);
+  assert.equal(await a.pageSpeed("https://x.example/", { key: "k", fetchImpl: async () => ({ ok: true, json: async () => ({ lighthouseResult: { categories: { performance: { score: 0.5 } } } }) }) }), null, "partial data is not used");
+  let seen;
+  const full = await a.pageSpeed("https://x.example/a b", { key: "KEY", fetchImpl: async (u) => { seen = String(u); return { ok: true, json: async () => ({ lighthouseResult: { categories: { performance: { score: 0.91 }, accessibility: { score: 1 }, "best-practices": { score: 0.8 }, seo: { score: 0.9 } } } }) }; } });
+  assert.deepEqual(full, { performance: 91, accessibility: 100, bestPractices: 80, seo: 90 });
+  assert.ok(seen.includes("strategy=mobile") && seen.includes("key=KEY") && seen.includes("category=seo"));
+});
+
+async function seedAuditLead(name, website, extra = {}) {
+  const r = await store.upsertPlace("aquila", { place_id: "osm:node/" + name.replace(/\W/g, ""), name, category: "bakery", category_label: "Bakery", address: "", city: "Auditville", region: "AV", phone: "", website, website_kind: website ? "site" : "none", maps_url: "", bucket: website ? "has_website" : "no_website", ...extra }, "shops in Auditville, AV");
+  return r.id;
+}
+
+test("audit results are stored; redesign targets list the weak sites worst first", async () => {
+  const rd = await import("../lib/redesign.js");
+  assert.deepEqual(rd.THRESHOLDS, [50, 60, 70, 80]);
+  assert.equal(rd.parseThreshold("70"), 70);
+  for (const bad of [undefined, "", "abc", "65", "-1", "70; DROP", "9999"]) assert.equal(rd.parseThreshold(bad), 60, String(bad));
+  const weak = await seedAuditLead("Weak Site Audit", "https://weak.example/");
+  const middling = await seedAuditLead("Middling Site Audit", "https://mid.example/");
+  const strong = await seedAuditLead("Strong Site Audit", "https://strong.example/");
+  const blocked = await seedAuditLead("Blocked Site Audit", "https://blocked.example/");
+  const gone = await seedAuditLead("Gone Site Audit", "https://gone.example/");
+  const noSite = await seedAuditLead("No Site Audit", "");
+  const social = await seedAuditLead("Social Site Audit", "https://www.facebook.com/x", { website_kind: "social", bucket: "no_website" });
+  const dnc = await seedAuditLead("Optout Site Audit", "https://optout.example/");
+  await store.setLeadStatus("aquila", dnc, "do_not_contact");
+  const queued = (await store.leadsToAudit("aquila")).map((l) => l.id);
+  for (const id of [weak, middling, strong, blocked, gone]) assert.ok(queued.includes(id));
+  for (const id of [noSite, social, dnc]) assert.ok(!queued.includes(id), "only real, contactable websites are audited");
+  await store.applyAudit("aquila", weak, { status: "ok", score: 31.4, checks: [], reasons: ["No mobile layout setting."], psi: null });
+  await store.applyAudit("aquila", middling, { status: "ok", score: 66, checks: [], reasons: ["Slow."], psi: null });
+  await store.applyAudit("aquila", strong, { status: "ok", score: 93, checks: [], reasons: [], psi: null });
+  await store.applyAudit("aquila", blocked, { status: "blocked", score: 50, reasons: ["blocked"] });
+  await store.applyAudit("aquila", gone, { status: "unreachable", score: null, reasons: ["gone"] });
+  await store.applyAudit("aquila", noSite, { status: "ok", score: 1, reasons: [] });
+  assert.equal((await store.getLead("aquila", noSite)).audit_score, null, "a lead without a website cannot be scored");
+  assert.equal((await store.getLead("aquila", blocked)).audit_score, null, "blocked sites never carry a score");
+  assert.equal((await store.getLead("aquila", weak)).audit_score, 31);
+  const queuedAfter = (await store.leadsToAudit("aquila")).map((l) => l.id);
+  assert.ok(!queuedAfter.includes(weak) && !queuedAfter.includes(gone), "audited recently, not repeated");
+  const below60 = (await store.redesignTargets("aquila", 60)).map((l) => l.id);
+  assert.deepEqual(below60.filter((id) => [weak, middling, strong, blocked, gone].includes(id)), [weak]);
+  const below70 = (await store.redesignTargets("aquila", 70)).map((l) => l.id).filter((id) => [weak, middling, strong, blocked, gone].includes(id));
+  assert.deepEqual(below70, [weak, middling], "worst first");
+  assert.equal(await store.countRedesignTargets("aquila", 70) >= 2, true);
+  assert.equal((await store.redesignTargets("other", 100)).length, 0, "brand isolation");
+  assert.equal((await store.auditCounts("other")).ok, 0);
+  const c = await store.auditCounts("aquila");
+  assert.ok(c.ok >= 3 && c.blocked >= 1 && c.unreachable >= 1);
+  // a lost, won or opted-out lead is not a redesign target
+  await store.setStage("aquila", weak, "won");
+  assert.ok(!(await store.redesignTargets("aquila", 100)).some((l) => l.id === weak));
+});
+
+test("the audit run records progress, survives one bad site, and refuses a second at the same time", async () => {
+  const ar = await import("../lib/auditrun.js");
+  const a = await seedAuditLead("Run Site One Audit2", "https://one.example/");
+  const b = await seedAuditLead("Run Site Two Audit2", "https://two.example/");
+  const c = await seedAuditLead("Run Site Three Audit2", "https://three.example/");
+  const seen = [];
+  const auditFn = async (url) => {
+    seen.push(url);
+    if (url.includes("two.")) throw new Error("boom");
+    if (url.includes("three.")) return { status: "unreachable", score: null, checks: [], reasons: ["gone"], psi: null };
+    return { status: "ok", score: 55, checks: [], reasons: ["Slow."], psi: null };
+  };
+  const s = await ar.auditSites({ brandId: "aquila", auditFn, concurrency: 2 });
+  assert.ok(seen.includes("https://one.example/") && seen.includes("https://two.example/"));
+  assert.equal(s.errors.length >= 1, true);
+  assert.match(s.errors.join(" "), /Run Site Two/);
+  assert.equal((await store.getLead("aquila", a)).audit_score, 55);
+  assert.equal((await store.getLead("aquila", b)).audit_status, null, "a crash leaves the lead to be retried");
+  assert.equal((await store.getLead("aquila", c)).audit_status, "unreachable");
+  const late = await ar.auditSites({ brandId: "aquila", auditFn, deadlineMs: -1 });
+  assert.match(late.stopped, /minute limit/);
+  // run record and no double start
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const audit = async ({ onProgress }) => { await onProgress({ total: 5, attempted: 2, scored: 1, unreachable: 1, blocked: 0, errors: [], stopped: null }); await gate; return { total: 5, attempted: 5, scored: 4, unreachable: 1, blocked: 0, errors: [], stopped: null }; };
+  const r1 = await ar.startAudit({ brandId: "aquila", audit });
+  const r2 = await ar.startAudit({ brandId: "aquila", audit });
+  assert.ok(r2.skipped);
+  assert.equal((await store.runningAudit("aquila")).id, r1.runId);
+  assert.equal(await store.runningVerification("aquila"), null, "audit and verification are separate");
+  release();
+  await r1.done;
+  const run = (await store.listRuns("aquila")).find((x) => x.id === r1.runId);
+  assert.equal(run.status, "done");
+  assert.equal(run.trigger, "audit");
+  assert.equal(run.has_website, 4);
+  assert.equal(run.no_website, 1);
+  const failed = await ar.startAudit({ brandId: "aquila", audit: async () => { throw new Error("db down"); } });
+  await failed.done;
+  assert.equal((await store.listRuns("aquila")).find((x) => x.id === failed.runId).status, "error");
+});
+
+test("pages built by scripts are not scored (an empty shell would be misjudged)", async () => {
+  const a = await import("../lib/audit.js");
+  const shell = "<!doctype html><html lang=en><head><title></title><meta name=viewport content='width=device-width'></head><body><div id=\"root\"></div><script src=a.js></script><script src=b.js></script><script src=c.js></script></body></html>";
+  const r = await a.auditSite("https://spa.example/", { fetchPageFn: async () => ({ status: 200, html: shell, finalUrl: "https://spa.example/", ms: 300, bytes: 400 }), psiFn: async () => null });
+  assert.equal(r.status, "script_built");
+  assert.equal(r.score, null);
+  assert.match(r.reasons[0], /built with scripts/);
+  // a small but real page is still scored
+  const tiny = await a.auditSite("https://tiny.example/", { fetchPageFn: async () => ({ status: 200, html: GOOD_HTML, finalUrl: "https://tiny.example/", ms: 300, bytes: 400 }), psiFn: async () => null });
+  assert.equal(tiny.status, "ok");
+});
+
+test("chains, franchise pages and directory listings are spotted; local businesses are not", async () => {
+  const c = await import("../lib/chains.js");
+  const skip = (name, website) => c.skipReason({ name, website });
+  assert.equal(skip("Starbucks", "https://www.starbucks.com/store-locator/store/1").status, "chain");
+  assert.equal(skip("The Great Clips", "https://x.example/").status, "chain");
+  assert.equal(skip("Great Clips Akron", "https://x.example/").status, "chain", "longer chain names can have a place after them");
+  assert.equal(skip("Tim Hortons", "https://locations.timhortons.com/oh/akron/12").status, "chain");
+  assert.equal(skip("Unknown Franchise", "https://corp.example/locations/akron-123").status, "chain");
+  assert.equal(skip("Wingstop", "https://wingstop.com/").status, "chain");
+  assert.equal(skip("Shell", "https://x.weebly.com/").status, "chain");
+  assert.equal(skip("Subway", "https://subshop.example/").status, "chain");
+  for (const url of ["https://www.groupon.com/biz/akron/katrinas", "https://book.squareup.com/appointments/abc", "https://www.yelp.com/biz/x", "https://order.toasttab.com/online/x"]) assert.equal(skip("Local Place", url).status, "listing", url);
+  assert.equal(skip("Local Place", "https://notgroupon.com/"), null, "a similar looking host is not a listing site");
+  // things that must NOT be skipped
+  assert.equal(skip("Citizen Pie", "https://www.citizenpie.com/"), null, "a local business with several listings is still a prospect");
+  assert.equal(skip("Citizen Pie", "https://www.citizenpie.com/"), null);
+  assert.equal(skip("Target Practice Archery", "https://archery.example/"), null, "an everyday word at the start of a local name is not a chain");
+  assert.equal(skip("Shelley's Shellfish House", "https://shelleys.example/"), null, "partial words do not match");
+  assert.equal(skip("Sub Shop", "https://subshop.example/"), null);
+  assert.equal(skip("Emily's", "https://emilyscleveland.com/american-food-order-online/restaurants/bba97770/31137"), null, "an ordering page on a business's own domain is audited");
+  assert.equal(skip("Mystery Salon", "https://corp.example/salons/akron-123"), null);
+  assert.equal(skip("", "garbage"), null);
+});
+
+test("the audit run skips chains and listings without any request", async () => {
+  const ar = await import("../lib/auditrun.js");
+  const chainLead = await seedAuditLead("Starbucks", "https://www.starbucks.com/store-locator/store/42");
+  const listingLead = await seedAuditLead("Listing Only Salon Audit3", "https://www.groupon.com/biz/akron/listing-only-salon");
+  const own = await seedAuditLead("Independent Audit3", "https://independent3.example/");
+  const requested = [];
+  const s = await ar.auditSites({ brandId: "aquila", auditFn: async (u) => { requested.push(u); return { status: "ok", score: 90, checks: [], reasons: [], psi: null }; } });
+  assert.ok(!requested.some((u) => u.includes("starbucks") || u.includes("groupon")), "no request to a chain or directory site");
+  assert.ok(requested.includes("https://independent3.example/"));
+  assert.ok(s.chains >= 1 && s.listings >= 1);
+  assert.equal((await store.getLead("aquila", chainLead)).audit_status, "chain");
+  assert.equal((await store.getLead("aquila", listingLead)).audit_status, "listing");
+  assert.equal((await store.getLead("aquila", chainLead)).audit_score, null);
+  assert.equal((await store.getLead("aquila", own)).audit_score, 90);
+  const targets = await store.redesignTargets("aquila", 101);
+  assert.ok(!targets.some((l) => l.id === chainLead || l.id === listingLead), "skipped sites are never redesign targets");
+  const counts = await store.auditCounts("aquila");
+  assert.ok(counts.chain >= 1 && counts.listing >= 1);
+});
+
+
+test("the waiting count only includes leads a check would actually look up", async () => {
+  const fresh = await seedVerifyLead("Waiting Count Lead Verify5");
+  const before = await store.countWaitingForLookup("aquila");
+  assert.ok(before >= 1);
+  assert.ok((await store.countUnverified("aquila")) >= before);
+  await store.applyWebsiteVerification("aquila", fresh, null);
+  assert.equal(await store.countWaitingForLookup("aquila"), before - 1, "looked up and not found: no longer waiting, still unverified");
+  assert.equal(await store.countWaitingForLookup("other"), 0);
+});

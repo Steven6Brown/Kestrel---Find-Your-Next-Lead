@@ -35,6 +35,15 @@ To run on a schedule: open the campaign and copy the one-line command it shows i
 4. **Only leads ready to contact** shows the ones you can email.
 5. **Download CSV** saves the current list. **Create outreach drafts for ready leads here** makes drafts (nothing is sent).
 
+## 3b. Find websites that need a redesign
+
+1. Run **Check websites (free)** on Leads first, so businesses that already have a website are in the "Has a website" list.
+2. Click **Redesign targets**, then **Check website quality (free)**. It reads each home page once and scores it out of 100. A hundred sites takes about a minute.
+3. Press a cutoff button (**Below 50**, **60**, **70** or **80**). The list shows the worst sites first, with what is holding each one back.
+4. Some sites cannot be scored: ones that block robots, do not load, or are built with scripts. National chains, franchise pages, and directory or booking pages are skipped on purpose. Look at the unscored ones by hand.
+5. Treat a score as a starting point, not a verdict. Only the home page is read, so a site that is fine but keeps its details on other pages can score lower than it deserves.
+6. Optional: add a free `PAGESPEED_API_KEY` to `.env.local` (see `.env.example`) and restart to include Google's measured speed and accessibility.
+
 ## 4. Outreach email (when you are ready to send for real)
 
 Nothing sends until you do all of these. You can skip this section while testing.

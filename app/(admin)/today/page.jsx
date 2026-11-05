@@ -2,8 +2,8 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import Flash from "@/components/Flash";
 import { BRAND } from "@/lib/auth";
-import { dueTasks, needsFollowUp, stageCounts } from "@/lib/store";
-import { CLOSED_STAGES, QUICK_DUE, STAGES, addDays, dueLabel, stageLabel, todayStr } from "@/lib/crm";
+import { dueTasks, listMeetings, needsFollowUp, stageCounts } from "@/lib/store";
+import { CLOSED_STAGES, MEETING_LOCATIONS, QUICK_DUE, nextDaysWindow, STAGES, addDays, dueLabel, labelOf, meetingWhen, stageLabel, todayStr } from "@/lib/crm";
 import { completeTaskAction, snoozeTaskAction } from "../crm-actions";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,11 @@ export default async function Today({ searchParams }) {
   await requireUser();
   const sp = await searchParams;
   const today = todayStr();
-  const [tasks, waiting, counts] = await Promise.all([dueTasks(BRAND, today, 7, addDays), needsFollowUp(BRAND, 15), stageCounts(BRAND)]);
+  const win = nextDaysWindow(7);
+  const [tasks, waiting, counts, meetings] = await Promise.all([
+    dueTasks(BRAND, today, 7, addDays), needsFollowUp(BRAND, 15), stageCounts(BRAND),
+    listMeetings(BRAND, { ...win, limit: 20 }),
+  ]);
   const open = STAGES.filter(([k]) => !CLOSED_STAGES.includes(k));
 
   return (
@@ -74,6 +78,21 @@ export default async function Today({ searchParams }) {
           </li>
         ))}
       </ul>
+
+      <section aria-labelledby="meet-h" className="mt-8">
+        <h2 id="meet-h" className="text-2xl font-semibold">Meetings in the next 7 days <span className="text-base font-normal text-muted">({meetings.length})</span></h2>
+        {meetings.length === 0 ? <p className="mt-2 text-muted">No meetings scheduled.</p> : (
+          <ul className="card mt-3 divide-y divide-line">
+            {meetings.map((m) => (
+              <li key={m.id} className="p-4">
+                <p className="font-semibold text-ink">{m.title} <span className="font-normal text-muted">with</span>{" "}
+                  <Link href={m.lead_id ? `/leads/${m.lead_id}` : `/clients/${m.client_id}`} className="underline underline-offset-4 hover:text-brand-hover">{m.lead_name || m.client_name}</Link></p>
+                <p className="text-sm text-muted">{meetingWhen(m.starts_at)} · {labelOf(MEETING_LOCATIONS, m.location)}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <Group id="over-h" title="Overdue" tasks={tasks.overdue} today={today} empty="Nothing overdue." />
       <Group id="today-h" title="Due today" tasks={tasks.today} today={today} empty="Nothing due today." />

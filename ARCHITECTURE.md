@@ -26,7 +26,17 @@
 - The pipeline board shows people you are dealing with. A scanned business joins it once it has an outreach draft, so thousands of scanned businesses do not drown it.
 - Every new table carries `brand_id` and every query filters on it (tested).
 
-**CRM, deferred (not built yet, documented here so it is not silent scope):** clients and projects, manual meeting logging and a meetings list, CSV export of contacts and payments, the connector framework, the scheduler and booking page, PayPal invoicing, the inbound website form connector, automatic reply logging, contact export and delete, retention rules. See KESTREL-CRM-HANDOFF-BRIEF.md for the plan and the open questions.
+**Owner decisions (2026-11-05):** Google Calendar is the calendar to use (none set up yet) and Google Meet is the default meeting place. Kestrel runs only on the owner's computer for now, so nothing public (booking page, webhooks, OAuth redirects) can reach it. The PayPal Business account exists; the owner will create the sandbox app and keep credentials in `.env.local` (the live secret is never shared in chat).
+
+**Consequences of running locally (assumptions, reversible):**
+- Booking: until Kestrel is hosted at a public https address, prospects book through the owner's own Google Calendar booking link (to be stored as a setting and added to emails and concept pages). A native booking page with Google free/busy waits for hosting. Meetings are logged by hand meanwhile.
+- PayPal: invoice status is fetched by a Reconcile button (and could be scheduled the same way scans are), not by webhooks, which need a public URL. Webhook handling is added once hosted.
+- Meeting times are entered and shown in the server computer's time zone and stored as UTC.
+- Currency is USD only for now.
+
+**CRM step 3 (built):** clients (converted from a won contact, or added directly), projects with type, status, quoted amount in integer cents, dates and notes, manually logged meetings attached to a contact or a client (logging one moves an early-stage contact to Meeting booked), a Meetings page, meetings on the Today screen, and CSV exports of contacts, clients and projects. Cancelled projects are left out of client totals.
+
+**CRM, deferred (not built yet, documented here so it is not silent scope):** the connector framework, the scheduler and booking page, PayPal invoicing, the inbound website form connector, automatic reply logging, contact export and delete, retention rules. See KESTREL-CRM-HANDOFF-BRIEF.md for the plan and the open questions.
 
 **Out of scope for v1:** auto-send, multi-tenant logins, billing, a brand picker UI, email finding or enrichment, follow-up sequences, reply tracking.
 

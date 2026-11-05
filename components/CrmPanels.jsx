@@ -1,14 +1,20 @@
 import { BRAND } from "@/lib/auth";
 import { ChipRadio } from "@/components/Chips";
-import { listActivities, tasksForLead } from "@/lib/store";
-import { KIND_LABELS, LOGGABLE_KINDS, QUICK_DUE, STAGES, dueLabel, sourceLabel, todayStr } from "@/lib/crm";
+import MeetingForm from "@/components/MeetingForm";
+import Link from "next/link";
+import { getClientByLead, listActivities, listMeetings, tasksForLead } from "@/lib/store";
+import { KIND_LABELS, LOGGABLE_KINDS, MEETING_LOCATIONS, QUICK_DUE, STAGES, dueLabel, labelOf, meetingWhen, sourceLabel, todayStr } from "@/lib/crm";
 import { addTaskAction, addTimelineAction, completeTaskAction, saveOwnerNotesAction, setStageAction } from "@/app/(admin)/crm-actions";
+import { convertToClientAction } from "@/app/(admin)/clients-actions";
 
 const when = (iso) => new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 
 /** Pipeline stage, follow-ups, notes and the timeline for one contact. */
 export default async function CrmPanels({ lead }) {
-  const [tasks, activities] = await Promise.all([tasksForLead(BRAND, lead.id), listActivities(BRAND, lead.id, 100)]);
+  const [tasks, activities, client, meetings] = await Promise.all([
+    tasksForLead(BRAND, lead.id), listActivities(BRAND, lead.id, 100), getClientByLead(BRAND, lead.id),
+    listMeetings(BRAND, { limit: 500 }).then((all) => all.filter((m) => m.lead_id === lead.id)),
+  ]);
   const today = todayStr();
   const open = tasks.filter((t) => !t.done_at);
   const done = tasks.filter((t) => t.done_at);
@@ -33,6 +39,31 @@ export default async function CrmPanels({ lead }) {
           <p className="mt-2 text-sm text-muted">Choosing &quot;Not interested&quot; also blocks any email to this person.</p>
           <button type="submit" className="btn btn-primary mt-3">Save stage</button>
         </form>
+      </section>
+
+      <section aria-labelledby="cl-h" className="card mt-8 p-5">
+        <h2 id="cl-h" className="text-2xl font-semibold">Client</h2>
+        {client ? (
+          <p className="mt-2"><Link href={`/clients/${client.id}`} className="underline underline-offset-4 hover:text-brand-hover">Open the client record and projects</Link></p>
+        ) : (
+          <form action={convertToClientAction} className="mt-2">
+            <input type="hidden" name="leadId" value={lead.id} />
+            <p className="text-muted">When they say yes, convert them. This creates a client record and marks the contact won.</p>
+            <button type="submit" className="btn mt-3">Convert to client</button>
+          </form>
+        )}
+      </section>
+
+      <section aria-labelledby="mtg-h" className="card mt-8 p-5">
+        <h2 id="mtg-h" className="text-2xl font-semibold">Meetings</h2>
+        {meetings.length > 0 && (
+          <ul className="mt-3 divide-y divide-line border-y border-line">
+            {meetings.map((m) => (
+              <li key={m.id} className="py-3"><span className="font-semibold text-ink">{m.title}</span> <span className="text-muted">· {meetingWhen(m.starts_at)} · {labelOf(MEETING_LOCATIONS, m.location)} · {m.status}</span></li>
+            ))}
+          </ul>
+        )}
+        <MeetingForm leadId={lead.id} />
       </section>
 
       <section aria-labelledby="fu-h" className="card mt-8 p-5">

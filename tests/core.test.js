@@ -734,3 +734,89 @@ test("opening an existing database again keeps it and maps old statuses to stage
   assert.deepEqual(rows.map((r) => r.stage), ["contacted", "not_interested", "new"]);
   await b.close();
 });
+
+// ---------------- clients, projects, meetings, exports ----------------
+
+test("money and meeting time helpers", async () => {
+  const c = await import("../lib/crm.js");
+  assert.equal(c.parseMoneyToCents("1500"), 150000);
+  assert.equal(c.parseMoneyToCents("$1,500.50"), 150050);
+  assert.equal(c.parseMoneyToCents("99.5"), 9950);
+  for (const bad of ["", "abc", "-5", "1e5", "10.999", "12 dollars", "1,2,3x"]) assert.equal(c.parseMoneyToCents(bad), null, bad);
+  assert.equal(c.formatCents(150050), "$1,500.50");
+  assert.equal(c.formatCents(null), "Not quoted");
+  const iso = c.localInputToIso("2026-11-06T14:30");
+  assert.equal(new Date(iso).getHours(), 14, "read in local time");
+  assert.equal(c.localInputToIso("tomorrow"), null);
+  assert.equal(c.localInputToIso("2026-13-45T99:99"), null);
+  const w = c.nextDaysWindow(7, Date.UTC(2026, 10, 5));
+  assert.equal(w.toIso, "2026-11-12T00:00:00.000Z");
+});
+
+test("clients: convert a won contact once, add direct clients, projects and totals", async () => {
+  const lead = await store.createContact("aquila", { name: "Convert Me", email: "convert@example.test", phone: "(555) 010-0300", source: "referral" });
+  const r = await store.convertToClient("aquila", lead);
+  assert.equal(r.created, true);
+  assert.equal((await store.convertToClient("aquila", lead)).id, r.id, "converting twice returns the same client");
+  assert.equal((await store.getLead("aquila", lead)).stage, "won");
+  assert.ok((await store.listActivities("aquila", lead)).some((a) => /Converted to a client/.test(a.body)));
+  const client = await store.getClient("aquila", r.id);
+  assert.equal(client.email, "convert@example.test");
+  assert.equal((await store.getClientByLead("aquila", lead)).id, r.id);
+  const direct = await store.createClient("aquila", { name: "Existing Client Co" });
+  assert.equal((await store.getClient("aquila", direct)).lead_id, null);
+  const p1 = await store.createProject("aquila", r.id, { name: "New website", type: "website", status: "in_progress", quotedCents: 250000, startOn: "2026-11-10", targetOn: "2026-12-10" });
+  await store.createProject("aquila", r.id, { name: "Dropped idea", type: "app", status: "cancelled", quotedCents: 999900 });
+  await store.createProject("aquila", r.id, { name: "Unpriced", type: "other", status: "proposed" });
+  const row = (await store.listClients("aquila")).find((c) => c.id === r.id);
+  assert.equal(row.project_count, 2, "cancelled projects are not counted");
+  assert.equal(Number(row.quoted_total), 250000, "or summed");
+  await store.setProjectStatus("aquila", p1, "delivered");
+  assert.equal((await store.listProjects("aquila", { clientId: r.id })).find((p) => p.id === p1).status, "delivered");
+  await assert.rejects(store.createProject("aquila", r.id, { name: "Bad", type: "spaceship", status: "proposed" }), "database rejects unknown types");
+  await store.setClientStatus("aquila", r.id, "paused");
+  assert.equal((await store.getClient("aquila", r.id)).status, "paused");
+});
+
+test("meetings: one owner, stage moves, windows, and brand isolation", async () => {
+  const c = await import("../lib/crm.js");
+  const lead = await store.createContact("aquila", { name: "Meet Me", source: "inbound" });
+  const startsAt = c.localInputToIso("2030-03-04T10:00");
+  const m = await store.createMeeting("aquila", { leadId: lead, title: "Intro call", location: "meet", startsAt });
+  assert.equal((await store.getLead("aquila", lead)).stage, "meeting_booked");
+  assert.ok((await store.listActivities("aquila", lead)).some((a) => a.kind === "meeting"));
+  await assert.rejects(store.createMeeting("aquila", { title: "x", location: "meet", startsAt }), /contact or a client/);
+  await assert.rejects(store.createMeeting("aquila", { leadId: lead, clientId: 1, title: "x", location: "meet", startsAt }), /contact or a client/);
+  await assert.rejects(store.createMeeting("aquila", { leadId: lead, title: "x", location: "teleporter", startsAt }), "database rejects unknown places");
+  await assert.rejects(store.createMeeting("other", { leadId: lead, title: "Sneaky", location: "meet", startsAt }), /not found/);
+  const clientId = await store.createClient("aquila", { name: "Meeting Client" });
+  const m2 = await store.createMeeting("aquila", { clientId, title: "Check-in", location: "phone", startsAt: c.localInputToIso("2030-03-05T09:00") });
+  const inWindow = await store.listMeetings("aquila", { fromIso: "2030-03-04T00:00:00.000Z", toIso: "2030-03-05T00:00:00.000Z" });
+  assert.ok(inWindow.some((x) => x.id === m) && !inWindow.some((x) => x.id === m2));
+  assert.equal((await store.listMeetings("other", { fromIso: "2030-01-01T00:00:00.000Z" })).length, 0, "other brands see none");
+  await store.setMeetingStatus("aquila", m, "done");
+  assert.equal((await store.listMeetings("aquila", { limit: 500 })).find((x) => x.id === m).status, "done");
+  await store.setMeetingStatus("other", m2, "cancelled");
+  assert.equal((await store.listMeetings("aquila", { limit: 500 })).find((x) => x.id === m2).status, "scheduled", "another brand cannot change it");
+});
+
+test("client and project data is isolated per brand", async () => {
+  const id = await store.createClient("aquila", { name: "Brand A Client" });
+  assert.equal(await store.getClient("other", id), null);
+  await assert.rejects(store.createProject("other", id, { name: "Sneaky", type: "website", status: "proposed" }), /Client not found/);
+  await store.setClientStatus("other", id, "ended");
+  assert.equal((await store.getClient("aquila", id)).status, "active");
+  assert.ok(!(await store.listClients("other")).some((c) => c.id === id));
+});
+
+test("contacts export holds the pipeline, not every scanned business", async () => {
+  const rows = await store.contactsForExport("aquila");
+  assert.ok(rows.length >= 1);
+  const names = rows.map((r) => r.name);
+  assert.ok(names.includes("Convert Me"));
+  const scanned = (await store.listLeads("aquila")).find((l) => l.source === "kestrel" && l.stage === "new" && !l.draft_status);
+  assert.ok(scanned, "a plain scanned business exists");
+  assert.ok(!names.includes(scanned.name), "a plain scanned business is not exported");
+  const { csvCell } = await import("../lib/leadfilters.js");
+  assert.equal(csvCell("=HYPERLINK(1)"), '"\'=HYPERLINK(1)"');
+});

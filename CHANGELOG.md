@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8.0 (branch crm-core)
+- Clients and projects, manual meetings with a Meetings page and Today list, CSV exports of contacts, clients and projects.
+
 ## 0.7.0 (branch crm-core)
 - CRM core: pipeline stages, append-only timeline, follow-up tasks, a Today screen, a Pipeline board, manual contacts, and stage filtering in the Leads database.
 

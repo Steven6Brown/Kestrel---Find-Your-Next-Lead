@@ -7,6 +7,7 @@
 | Email text and send status | Generated, then edited by the operator | Review and audit trail | `drafts` | Same |
 | Staff accounts: name, email, password hash, two-factor secret (encrypted), sign-in IP and device, audit events | Typed by the user or generated | Sign in, security, accountability | Postgres `users`, `sessions`, `audit_log` | Sessions until they expire or are revoked; audit log kept until you delete it |
 | CRM: contact name, email, phone, how they found you, pipeline stage, timeline entries, follow-up tasks, private notes | Typed by you, or sent to you by the contact | Remember who you are dealing with and when to follow up | Postgres `leads`, `activities`, `tasks` | Kept until you delete them; there is no contact export or delete screen yet (a known gap) |
+| Clients and projects: client name, email, phone, status, notes; project name, type, status, quoted amount, dates; meeting titles, times and notes | Typed by you | Track paid work and meetings | Postgres `clients`, `projects`, `meetings` | Kept until you delete them; no delete screen yet (a known gap) |
 | Opted-out addresses | Unsubscribe link or manual entry | Never contact again | `suppressions` | Kept indefinitely on purpose |
 
 Processors: Google (Places), Resend (delivery), hosting provider. No analytics, no cookies besides HTTP Basic Auth. Data is not used for any other purpose.

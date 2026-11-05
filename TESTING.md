@@ -15,7 +15,12 @@ First-run setup, wrong password message with email kept, two-factor enrollment (
 ## CRM core (performed)
 Unit tests (42 in total) cover stages and the status sync, manual contacts without a place id, the append-only timeline, not-interested and unsubscribe suppression, send moving a contact to contacted, task groups for Today, snooze and completion, the pipeline membership rule, brand isolation, and re-opening an existing database with the new schema. In the browser: added a contact, set a stage, added a follow-up, viewed Today and Pipeline against a database that had the older schema.
 
+## Clients, projects, meetings, exports (performed)
+47 unit tests in total. The newest cover money and time parsing, converting a contact once, project totals that skip cancelled work, meeting ownership and stage moves, brand isolation, database constraints, and export contents. In the browser: logged a meeting (stage moved by itself), converted a contact to a client, added a project with a quoted amount, and downloaded all three CSVs.
+
 ## Not performed
+- Clients, projects and meetings screens at phone width; keyboard-only and screen reader checks.
+- Daylight saving boundaries for meeting times (the conversion helper is tested only for local-time reading).
 - CRM screens at phone width, keyboard-only and screen reader checks, concurrent edits.
 - Lockout, invitation, user management and session revoke screens were covered by unit tests only, not clicked through.
 - Recovery code display after enrollment was fixed after a bug was found; the fix was not re-run in the browser.

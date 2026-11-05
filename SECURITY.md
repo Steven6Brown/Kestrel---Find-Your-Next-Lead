@@ -21,6 +21,7 @@
 - Server actions validate with zod and allowlists (stage, source, activity kind, quick due dates); free text is length limited and rendered escaped.
 - The timeline is append only: there is no edit or delete path.
 - Marking someone not interested suppresses their address and rejects pending drafts.
+- Clients, projects and meetings are brand scoped the same way (inserted with a SELECT from the owning row, so a record cannot be attached to another brand's contact or client), with database CHECK constraints on types, statuses and meeting places. Money is stored as integer cents and parsed from a strict pattern. CSV exports use an allowlist of kinds, require a signed-in session, and neutralize spreadsheet formula injection.
 
 ## Other controls
 

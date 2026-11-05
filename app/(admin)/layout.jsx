@@ -9,6 +9,8 @@ export default async function AdminLayout({ children }) {
     ["/today", "Today"],
     ["/pipeline", "Pipeline"],
     ["/leads", "Leads"],
+    ["/clients", "Clients"],
+    ["/meetings", "Meetings"],
     ["/", "Scanner"],
     ["/queue", "Review queue"],
     ["/optouts", "Opt-outs"],

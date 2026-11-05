@@ -1,24 +1,15 @@
-import crypto from "node:crypto";
 import { NextResponse, after } from "next/server";
 import { DEFAULT_BRAND_ID } from "@/config/brands";
 import { getCampaign, listCampaigns } from "@/lib/store";
 import { startRun } from "@/lib/runner";
 import { allow } from "@/lib/ratelimit";
+import { cronAuthorized } from "@/lib/cronauth";
 
 // Called by Windows Task Scheduler (scripts/run-campaign.ps1). Public path, protected by a
 // bearer secret so only your scheduled task can start scans. Responds right away (202) and
 // finishes the scan in the background; results appear on the dashboard under Recent runs.
-function authorized(request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || secret.length < 16) return null; // not configured
-  const given = (request.headers.get("authorization") || "").replace(/^Bearer /, "");
-  const a = Buffer.from(given);
-  const b = Buffer.from(secret);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
 export async function POST(request) {
-  const ok = authorized(request);
+  const ok = cronAuthorized(request);
   if (ok === null) return NextResponse.json({ error: "CRON_SECRET is not configured." }, { status: 503 });
   if (!ok) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   if (!allow("cron", 30, 60_000)) return NextResponse.json({ error: "Too many requests." }, { status: 429 });

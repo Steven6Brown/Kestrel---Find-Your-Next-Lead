@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.0 (branch crm-core)
+- Backups (Settings, Backups): one click saves a full, checked copy of the database. Optional encryption with BACKUP_PASSPHRASE, an optional BACKUP_DIR (another drive or synced folder), newest 30 kept, a Check button, downloads, a nightly Windows task (scripts/register-backup-task.ps1), and a Needs attention reminder after 7 days without one. scripts/restore-backup.mjs restores into a new empty folder and never overwrites.
+- Contact export and delete (contact page, owners and admins): export everything held about a contact as a JSON file, or delete them after a confirmation. The email stays on the do not contact list, a later scan cannot add the business back, clients with projects are protected, and everything is logged.
+
 ## 2.1.0 (branch crm-core)
 - Insights page (under Today in the menu): headline numbers, Money (owners and admins only: billed and paid per week or month, still owed, open proposals, average project, money by kind of work), where contacts get to (funnel), outreach (emails per week, results for no website and redesign emails), where wins come from (business type, city, source), and speed (days to win, overdue follow-ups, meetings held). Periods: 30 days, 90 days, 12 months, all time.
 - Every percentage shows the counts behind it, and a rate over fewer than 20 items is shown as a plain count marked "too few to judge". Charts are plain SVG that follow light and dark, each with a table of the same numbers.

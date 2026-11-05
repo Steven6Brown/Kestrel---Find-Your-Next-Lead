@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/auth";
+import { isManager, requireUser } from "@/lib/auth";
 import CrmPanels from "@/components/CrmPanels";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Lead" };
 
 export default async function LeadPage({ params, searchParams }) {
-  await requireUser();
+  const user = await requireUser();
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const leadId = Number(id);
   const lead = Number.isInteger(leadId) ? await getLead(DEFAULT_BRAND_ID, leadId) : null;
@@ -206,6 +206,17 @@ export default async function LeadPage({ params, searchParams }) {
         </>
       ) : lead.bucket === "unknown" ? null : (
         <p className="mt-8 text-muted">This business already lists a website, so no mockup or outreach is created. It stays here as a future redesign lead.</p>
+      )}
+
+      {isManager(user) && (
+        <section aria-labelledby="privacy-h" className="mt-8 border border-line bg-surface p-5">
+          <h2 id="privacy-h" className="text-2xl font-semibold">Privacy</h2>
+          <p className="mt-1 text-muted">If this person asks what you hold about them, or asks to be removed, use these.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <a className="btn" href={`/leads/${lead.id}/export`} download>Export this contact&apos;s data</a>
+            <Link className="btn" href={`/leads/${lead.id}/delete`}>Delete this contact</Link>
+          </div>
+        </section>
       )}
     </div>
   );

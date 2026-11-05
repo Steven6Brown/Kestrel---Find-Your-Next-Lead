@@ -1947,8 +1947,9 @@ test("next step counts come from real data and stay inside the brand", async () 
   const { todayStr } = await import("../lib/crm.js");
   const c = await n.nextStepCounts("aquila", todayStr());
   for (const k of ["dueNow", "review", "approved", "lookups", "unscored"]) assert.ok(Number.isInteger(c[k]) && c[k] >= 0, k);
+  assert.equal(c.backupDue, false, "nobody is nagged about backups unless the page asks");
   const other = await n.nextStepCounts("other", todayStr());
-  assert.deepEqual(other, { dueNow: 0, review: 0, approved: 0, lookups: 0, unscored: 0 }, "another brand sees nothing of ours");
+  assert.deepEqual(other, { dueNow: 0, review: 0, approved: 0, lookups: 0, unscored: 0, backupDue: false }, "another brand sees nothing of ours");
   // a lead with a follow-up due today shows up
   const id = await seedVerifyLead("Next Step Lead Verify7");
   await store.addTask("aquila", id, { title: "Call back", dueOn: todayStr() });
@@ -2227,4 +2228,263 @@ test("a corrupt stage log entry cannot break the statistics", async () => {
   assert.equal(ev[0].to, "", "a missing destination becomes empty, not a crash");
   const ins = await import("../lib/insights.js");
   assert.doesNotThrow(() => ins.computeInsights(rows, { range: "all", now: new Date(), todayStr: "2026-11-05" }));
+});
+
+// ---------------- backups ----------------
+
+async function tmpDir(prefix = "kestrel-test-") {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+const pgQ = (db) => (sql, p) => db.query(sql, p).then((r) => r.rows);
+
+test("backup: tables are ordered parents first, found from the database, and sign in data is left out", async () => {
+  const b = await import("../lib/backup.js");
+  assert.deepEqual(b.orderTables(["drafts", "leads", "activities"], [{ child: "drafts", parent: "leads" }, { child: "activities", parent: "leads" }]), ["leads", "activities", "drafts"]);
+  assert.deepEqual(b.orderTables(["a", "b"], [{ child: "a", parent: "a" }]), ["a", "b"], "a table pointing at itself is fine");
+  assert.deepEqual(b.orderTables(["a", "b"], [{ child: "a", parent: "b" }, { child: "b", parent: "a" }]), ["a", "b"], "a cycle does not hang");
+  assert.deepEqual(b.orderTables(["x"], [{ child: "x", parent: "gone" }]), ["x"], "links to tables not saved are ignored");
+  // a table added later is picked up without changing any list
+  const fake = async (sql, params) => {
+    if (/information_schema\.tables/.test(sql)) return [{ table_name: "leads" }, { table_name: "brand_new_table" }, { table_name: "sessions" }, { table_name: "auth_tokens" }, { table_name: "Bad Name" }];
+    if (/pg_constraint/.test(sql)) return [];
+    if (/information_schema\.columns/.test(sql)) return [{ column_name: "id" }, { column_name: "note" }];
+    if (/FROM "brand_new_table"/.test(sql)) return [{ id: 1, note: "hello" }];
+    return [{ id: 7, note: new Date("2026-01-02T03:04:05Z") }];
+  };
+  const snap = await b.dumpDatabase(fake, { now: new Date("2026-11-05T12:00:00Z"), secret: "s3cret" });
+  assert.deepEqual(snap.manifest.order, ["brand_new_table", "leads"]);
+  assert.ok(!("sessions" in snap.tables) && !("auth_tokens" in snap.tables) && !("Bad Name" in snap.tables));
+  assert.deepEqual(snap.tables.leads.rows[0], [7, "2026-01-02T03:04:05.000Z"], "dates become text");
+  assert.equal(snap.manifest.secret_included, true);
+  assert.equal(snap.secret, "s3cret");
+  assert.equal(b.dumpDatabase.length >= 1, true);
+});
+
+test("backup: a real database round trips into a fresh one, exactly, and keeps counting ids", async () => {
+  const b = await import("../lib/backup.js");
+  const { query, openLocal } = await import("../lib/db.js");
+  const lead = await seedVerifyLead("Backup Roundtrip Lead Verify11");
+  await store.saveDraft("aquila", lead, { subject: "Subject with 'quotes' and ünïcode ✓", body: "line1\nline2", kind: "no_website" });
+  await store.addActivity("aquila", lead, { kind: "note", body: "a note", metadata: { a: 1 } });
+  const snap = await b.dumpDatabase((s, p) => query(s, p), { secret: null });
+  assert.ok(snap.manifest.order.includes("leads") && snap.manifest.order.includes("activities") && snap.manifest.order.includes("invoices"));
+  assert.ok(!snap.manifest.order.includes("sessions"));
+  assert.ok(snap.manifest.order.indexOf("leads") < snap.manifest.order.indexOf("drafts"), "leads before the drafts that point at them");
+  const fresh = await openLocal(undefined);
+  const q2 = pgQ(fresh);
+  const result = await b.restoreSnapshot(q2, snap);
+  assert.equal(result.rows, Object.values(snap.manifest.counts).reduce((a, c) => a + c, 0));
+  for (const [name, n] of Object.entries(snap.manifest.counts)) assert.equal((await q2(`SELECT COUNT(*)::int AS c FROM "${name}"`))[0].c, n, name);
+  const original = (await query("SELECT * FROM drafts WHERE lead_id = ?", [lead]))[0];
+  const copy = (await q2("SELECT * FROM drafts WHERE lead_id = $1", [lead]))[0];
+  assert.deepEqual(copy, original, "a draft comes back identical, quotes and accents included");
+  const ids = (await query("SELECT MAX(id)::int AS m FROM leads"))[0].m;
+  assert.ok((await q2("SELECT nextval(pg_get_serial_sequence('\"leads\"', 'id'))::int AS n"))[0].n > ids, "new rows continue after the restored ones");
+  // a restore never writes over data
+  await assert.rejects(b.restoreSnapshot(q2, snap), (e) => e instanceof b.BackupError && /already has data/.test(e.message));
+  await assert.rejects(b.restoreSnapshot((s, p) => query(s, p), snap), (e) => /already has data/.test(e.message), "and never into the live database");
+  await fresh.close();
+  const sparse = await openLocal(undefined);
+  await sparse.exec("DROP TABLE activities CASCADE");
+  await assert.rejects(b.restoreSnapshot(pgQ(sparse), snap), /no table called activities/);
+  await sparse.close();
+});
+
+test("backup: files are checked, optionally encrypted, and tampering is caught", async () => {
+  const b = await import("../lib/backup.js");
+  const { query } = await import("../lib/db.js");
+  const dir = await tmpDir();
+  const q = (s, p) => query(s, p);
+  const plain = await b.createBackup({ q, dir, passphrase: "", secret: "the-app-secret", now: new Date(2026, 10, 5, 9, 0, 0) });
+  assert.match(plain.name, /^kestrel-backup-20261105-090000\.kbk\.gz$/);
+  assert.equal(plain.encrypted, false);
+  const path = await import("node:path");
+  const fs = await import("node:fs");
+  const ok = b.verifyBackup(path.join(dir, plain.name), "");
+  assert.equal(ok.ok, true);
+  assert.equal(ok.secretIncluded, true);
+  assert.equal(ok.rows, plain.rows);
+  assert.equal(b.readBackup(path.join(dir, plain.name), "").secret, "the-app-secret");
+  // encrypted
+  const enc = await b.createBackup({ q, dir, passphrase: "correct horse battery", secret: null, now: new Date(2026, 10, 5, 9, 0, 1) });
+  assert.match(enc.name, /\.kbk\.enc$/);
+  const raw = fs.readFileSync(path.join(dir, enc.name));
+  assert.ok(!raw.toString("latin1").includes("leads"), "the table names are not readable in an encrypted file");
+  assert.equal(b.verifyBackup(path.join(dir, enc.name), "correct horse battery").ok, true);
+  assert.match(b.verifyBackup(path.join(dir, enc.name), "wrong passphrase").error, /Wrong passphrase/);
+  assert.match(b.verifyBackup(path.join(dir, enc.name), "").error, /encrypted/);
+  // flip one byte inside the ciphertext
+  const hurt = Buffer.from(raw);
+  hurt[hurt.length - 5] ^= 0xff;
+  fs.writeFileSync(path.join(dir, "kestrel-backup-20261105-090002.kbk.enc"), hurt);
+  assert.match(b.verifyBackup(path.join(dir, "kestrel-backup-20261105-090002.kbk.enc"), "correct horse battery").error, /Wrong passphrase|damaged/);
+  // plain file with the data changed but a valid gzip around it
+  const snap = b.readBackup(path.join(dir, plain.name), "");
+  snap.tables.leads.rows.pop();
+  fs.writeFileSync(path.join(dir, "kestrel-backup-20261105-090003.kbk.gz"), b.encodeSnapshot(snap, ""));
+  assert.match(b.verifyBackup(path.join(dir, "kestrel-backup-20261105-090003.kbk.gz"), "").error, /checksum|incomplete/);
+  // not a backup at all
+  fs.writeFileSync(path.join(dir, "kestrel-backup-20261105-090004.kbk.gz"), "hello");
+  assert.match(b.verifyBackup(path.join(dir, "kestrel-backup-20261105-090004.kbk.gz"), "").error, /not a Kestrel backup/);
+  assert.match(b.verifyBackup(path.join(dir, "kestrel-backup-19990101-000000.kbk.gz"), "").error, /not found/);
+  // a snapshot from a future format is refused rather than misread
+  const future = JSON.parse(JSON.stringify(snap));
+  future.manifest.format = 99;
+  fs.writeFileSync(path.join(dir, "kestrel-backup-20261105-090005.kbk.gz"), b.encodeSnapshot(future, ""));
+  assert.match(b.verifyBackup(path.join(dir, "kestrel-backup-20261105-090005.kbk.gz"), "").error, /this version can read/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("backup: the newest are kept, strangers are never touched, and staleness is reported", async () => {
+  const b = await import("../lib/backup.js");
+  const { query } = await import("../lib/db.js");
+  const path = await import("node:path");
+  const fs = await import("node:fs");
+  const dir = await tmpDir();
+  for (let i = 0; i < 5; i++) await b.createBackup({ q: (s, p) => query(s, p), dir, passphrase: "", keep: 3, now: new Date(2026, 10, 1 + i, 3, 0, 0) });
+  fs.writeFileSync(path.join(dir, "notes.txt"), "mine");
+  fs.writeFileSync(path.join(dir, "kestrel-backup-20261101-030000.kbk.gz.tmp"), "half written");
+  fs.writeFileSync(path.join(dir, "kestrel-backup-bad.kbk.gz"), "x");
+  const names = b.listBackups(dir).map((x) => x.name);
+  assert.deepEqual(names, ["kestrel-backup-20261105-030000.kbk.gz", "kestrel-backup-20261104-030000.kbk.gz", "kestrel-backup-20261103-030000.kbk.gz"], "newest three, newest first");
+  assert.deepEqual(b.pruneBackups(dir, 0).length, 2, "keeping zero still keeps one");
+  assert.equal(b.listBackups(dir).length, 1);
+  for (const stranger of ["notes.txt", "kestrel-backup-20261101-030000.kbk.gz.tmp", "kestrel-backup-bad.kbk.gz"]) assert.ok(fs.existsSync(path.join(dir, stranger)), stranger + " is untouched");
+  const st = b.backupStatus(dir, new Date(Date.now()));
+  assert.equal(st.count, 1);
+  assert.equal(st.stale, false, "age comes from the file time, not from the date in its name");
+  fs.utimesSync(path.join(dir, names[0]), new Date(), new Date());
+  assert.equal(b.backupStatus(dir).stale, false, "just made");
+  const old = new Date(Date.now() - 9 * 86400000);
+  fs.utimesSync(path.join(dir, names[0]), old, old);
+  assert.equal(b.backupStatus(dir).stale, true, "nine days old");
+  assert.deepEqual(b.backupStatus(path.join(dir, "missing")), { count: 0, newest: null, ageDays: null, stale: true });
+  // only an absolute folder is accepted from the environment
+  assert.equal(b.backupDir({ BACKUP_DIR: "relative/folder" }).includes("relative"), false);
+  assert.equal(b.backupDir({ BACKUP_DIR: path.resolve(dir, "elsewhere") }), path.resolve(dir, "elsewhere"));
+  assert.ok(b.BACKUP_NAME.test("kestrel-backup-20261105-030000.kbk.enc"));
+  for (const bad of ["../kestrel-backup-20261105-030000.kbk.gz", "kestrel-backup-20261105-030000.kbk.gz/../x", "kestrel-backup-2026.kbk.gz", "x.kbk.gz", "kestrel-backup-20261105-030000.kbk.gz.tmp", "kestrel-backup-20261105-030000.kbk.zip"]) assert.equal(b.BACKUP_NAME.test(bad), false, bad);
+  const failing = b.createBackup({ q: (s, p) => query(s, p), dir: path.join(dir, "notes.txt", "cannot"), passphrase: "", now: new Date() });
+  await assert.rejects(failing, (e) => e instanceof b.BackupError && /Could not save the backup/.test(e.message));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---------------- contact export and delete ----------------
+
+test("a contact export holds everything about one contact and nothing about anyone else", async () => {
+  const privacy = await import("../lib/privacy.js");
+  const lead = await seedVerifyLead("Export Contact Verify12");
+  const other = await seedVerifyLead("Someone Else Verify12");
+  await store.updateLeadContact("aquila", lead, { contact_email: "owner@exportme.example", notes: "likes mornings", status: "contacted" });
+  await store.saveDraft("aquila", lead, { subject: "Hello", body: "Body text", kind: "no_website" });
+  await store.addActivity("aquila", lead, { kind: "note", body: "Called, left a message" });
+  await store.addTask("aquila", lead, { title: "Call back", dueOn: "2026-12-01" });
+  await store.createMeeting("aquila", { leadId: lead, title: "Intro call", location: "phone", startsAt: new Date(2026, 11, 2, 15).toISOString() });
+  await store.addSuppression("aquila", "owner@exportme.example", "unsubscribe");
+  await store.addActivity("aquila", other, { kind: "note", body: "THIS BELONGS TO SOMEONE ELSE" });
+  const x = await privacy.contactExport("aquila", lead);
+  assert.equal(x.contact.name, "Export Contact Verify12");
+  assert.equal(x.contact.contact_email, "owner@exportme.example");
+  assert.equal(x.contact.notes, "likes mornings");
+  assert.ok(!("mockup_token" in x.contact), "a private link is not part of the person's data");
+  assert.equal(x.drafts[0].body, "Body text");
+  assert.ok(x.activities.some((a) => a.body === "Called, left a message"));
+  assert.equal(x.tasks[0].title, "Call back");
+  assert.equal(x.meetings[0].title, "Intro call");
+  assert.equal(x.do_not_contact_entry.email, "owner@exportme.example");
+  assert.equal(x.client, null);
+  assert.ok(!JSON.stringify(x).includes("BELONGS TO SOMEONE ELSE"), "nothing about anyone else");
+  assert.equal(await privacy.contactExport("other", lead), null, "another brand cannot export it");
+  assert.equal(await privacy.contactExport("aquila", 99999999), null);
+  assert.doesNotThrow(() => JSON.stringify(x), "it can be saved as a file");
+  const asClient = await store.convertToClient("aquila", lead);
+  const proj = await store.createProject("aquila", asClient.id, { name: "Site", type: "website", status: "proposed", quotedCents: 123400 });
+  const y = await privacy.contactExport("aquila", lead);
+  assert.equal(y.client.id, asClient.id);
+  assert.equal(y.projects[0].quoted_amount_cents, 123400);
+  assert.ok(proj);
+});
+
+test("deleting a contact removes it, keeps only a do not contact entry, and stops a rescan bringing it back", async () => {
+  const privacy = await import("../lib/privacy.js");
+  const { query } = await import("../lib/db.js");
+  const place = { place_id: "osm:node/DeleteMe13", name: "Delete Me Cafe Verify13", category: "cafe", category_label: "Cafe", address: "", city: "Veriton", region: "VT", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website" };
+  const made = await store.upsertPlace("aquila", place, "shops in Veriton, VT");
+  const lead = made.id;
+  const keep = await seedVerifyLead("Keep Me Verify13");
+  await store.updateLeadContact("aquila", lead, { contact_email: "gone@deleteme.example", notes: "private note", status: "new" });
+  await store.saveDraft("aquila", lead, { subject: "s", body: "b" });
+  await store.addActivity("aquila", lead, { kind: "note", body: "x" });
+  await store.addTask("aquila", lead, { title: "t", dueOn: "2026-12-01" });
+  await store.createMeeting("aquila", { leadId: lead, title: "m", location: "phone", startsAt: new Date().toISOString() });
+  const sum = await privacy.deleteSummary("aquila", lead);
+  assert.deepEqual(sum, { drafts: 1, activities: (await query("SELECT COUNT(*)::int AS n FROM activities WHERE lead_id = ?", [lead]))[0].n, tasks: 1, meetings: 1 });
+  assert.equal((await privacy.deleteContact({ brandId: "other", leadId: lead })).deleted, false, "another brand cannot delete it");
+  assert.ok(await store.getLead("aquila", lead));
+  const r = await privacy.deleteContact({ brandId: "aquila", leadId: lead, userId: null, ip: "127.0.0.1" });
+  assert.deepEqual(r, { deleted: true });
+  assert.equal(await store.getLead("aquila", lead), null);
+  for (const t of ["drafts", "activities", "tasks", "meetings"]) assert.equal((await query(`SELECT COUNT(*)::int AS n FROM ${t} WHERE lead_id = ?`, [lead]))[0].n, 0, t + " are gone with the contact");
+  assert.ok(await store.getLead("aquila", keep), "other contacts are untouched");
+  assert.equal(await store.isSuppressed("aquila", "gone@deleteme.example"), true, "the address stays on the do not contact list");
+  const again = await store.upsertPlace("aquila", place, "shops in Veriton, VT");
+  assert.deepEqual(again, { created: false, id: null, skipped: true }, "a rescan does not bring it back");
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM leads WHERE place_id = 'osm:node/DeleteMe13'"))[0].n, 0);
+  const audit = (await query("SELECT detail FROM audit_log WHERE event = 'contact_deleted' ORDER BY id DESC LIMIT 1"))[0];
+  assert.equal(audit.detail, `contact ${lead}`, "the log says who and when, never the person's details");
+  assert.deepEqual(await privacy.deleteContact({ brandId: "aquila", leadId: lead }), { deleted: false, reason: "That contact was not found." });
+  // the same place in another brand is a different record and is not blocked
+  const otherBrand = await store.upsertPlace("other", place, "shops in Veriton, VT");
+  assert.equal(otherBrand.created, true);
+});
+
+test("a client with projects cannot be deleted; a client with none is deleted with the contact", async () => {
+  const privacy = await import("../lib/privacy.js");
+  const { query } = await import("../lib/db.js");
+  const withWork = await seedVerifyLead("Client With Work Verify14");
+  const c1 = await store.convertToClient("aquila", withWork);
+  await store.createProject("aquila", c1.id, { name: "Paid job", type: "website", status: "in_progress", quotedCents: 50000 });
+  const blocked = await privacy.deleteContact({ brandId: "aquila", leadId: withWork });
+  assert.equal(blocked.deleted, false);
+  assert.match(blocked.reason, /financial records/);
+  assert.ok(await store.getLead("aquila", withWork), "nothing was deleted");
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM clients WHERE lead_id = ?", [withWork]))[0].n, 1);
+  assert.match(await privacy.deleteBlocker("aquila", withWork), /financial records/);
+  const noWork = await seedVerifyLead("Client Without Work Verify14");
+  await store.convertToClient("aquila", noWork);
+  assert.equal(await privacy.deleteBlocker("aquila", noWork), null);
+  assert.deepEqual(await privacy.deleteContact({ brandId: "aquila", leadId: noWork }), { deleted: true });
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM clients WHERE name = 'Client Without Work Verify14'"))[0].n, 0, "the empty client record goes too");
+});
+
+test("the scheduler endpoints refuse anyone without the secret", async () => {
+  const { cronAuthorized } = await import("../lib/cronauth.js");
+  const req = (auth) => ({ headers: { get: (k) => (k.toLowerCase() === "authorization" ? auth : null) } });
+  const good = "a-long-enough-secret-value";
+  assert.equal(cronAuthorized(req("Bearer " + good), { CRON_SECRET: good }), true);
+  assert.equal(cronAuthorized(req("Bearer " + good + "x"), { CRON_SECRET: good }), false);
+  assert.equal(cronAuthorized(req("Bearer nope"), { CRON_SECRET: good }), false);
+  assert.equal(cronAuthorized(req(null), { CRON_SECRET: good }), false, "no header");
+  assert.equal(cronAuthorized(req(""), { CRON_SECRET: good }), false);
+  assert.equal(cronAuthorized(req("Bearer short"), { CRON_SECRET: "short" }), null, "a short secret switches the endpoint off");
+  assert.equal(cronAuthorized(req("Bearer x"), {}), null, "no secret: switched off, never open");
+});
+
+test("next step: a backup reminder comes last, only when asked, and only with data to save", async () => {
+  const n = await import("../lib/nextstep.js");
+  const base = { dueNow: 0, review: 0, approved: 0, lookups: 0, unscored: 0, backupDue: false };
+  assert.deepEqual(n.pickSteps(base), []);
+  const due = n.pickSteps({ ...base, backupDue: true });
+  assert.equal(due[0].key, "backup");
+  assert.equal(due[0].href, "/settings/backups");
+  assert.match(due[0].text, /has not been backed up in the last 7 days/);
+  assert.deepEqual(n.pickSteps({ ...base, review: 2, unscored: 1, backupDue: true }).map((s) => s.key), ["review", "score", "backup"], "backups never push aside the people waiting on you");
+  assert.equal(n.pickNext({ ...base, backupDue: true }, "/settings/backups").key, "scan", "not shown on the page that does it");
+  const { todayStr } = await import("../lib/crm.js");
+  assert.equal((await n.nextStepCounts("aquila", todayStr(), { checkBackup: true })).backupDue, true, "there is data and no backup in the test data folder");
+  assert.equal((await n.nextStepCounts("aquila", todayStr(), { checkBackup: false })).backupDue, false);
+  assert.equal((await n.nextStepCounts("brand-with-no-data", todayStr(), { checkBackup: true })).backupDue, false, "an empty brand has nothing to back up");
 });

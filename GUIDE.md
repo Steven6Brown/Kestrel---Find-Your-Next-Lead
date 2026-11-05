@@ -101,6 +101,15 @@ First-time PayPal setup (sandbox, test money only):
 1. **Settings, Connections** (owners and admins): paste your Google Calendar appointment page link under **Booking link** and **Save link**.
 2. It then appears in new outreach drafts, on the public concept pages, and on each contact's page to paste into replies. (Drafts made earlier need **Regenerate from template**.)
 
+## 8b. Backups and privacy requests (owners and admins)
+
+1. **Back up your data.** Go to **Settings, Backups** and press **Back up now**. It saves one file with everything in Kestrel. Do it before any big change, and do **Check** on a backup now and then to prove it can be opened.
+2. **Make it automatic.** In PowerShell, from the Kestrel folder: `.\scripts\register-backup-task.ps1 -Time 02:00`. Kestrel must be running at that time and `CRON_SECRET` must be in `.env.local`. Results are written to `%LOCALAPPDATA%\Kestrel\backup.log`.
+3. **Keep a copy somewhere else.** A backup on the same disk does not protect you from that disk failing. Set `BACKUP_DIR` in `.env.local` to a folder on another drive, and set `BACKUP_PASSPHRASE` first so the files are encrypted. Write the passphrase down somewhere safe: without it a backup cannot be opened.
+4. **Restore.** Stop Kestrel, then run `node scripts/restore-backup.mjs "<backup file>" "C:\KestrelRestored"` (use `--check` instead of a folder to only test a backup). Add `KESTREL_DATA_DIR=C:\KestrelRestored` to `.env.local` and start Kestrel. It only ever fills a new, empty folder.
+5. **Someone asks what you hold about them.** Open their contact page, go to **Privacy**, and press **Export this contact's data**. You get a JSON file.
+6. **Someone asks to be removed.** On the same section press **Delete this contact**, read what will go and what stays, tick the box, and press **Delete permanently**. Their email goes on the do not contact list and they will not be emailed again. A client with projects or invoices cannot be deleted because you may need those records; export their data instead. Older backups still hold a deleted contact until newer ones replace them.
+
 ## 9. People who work with you
 
 **Users** (owners and admins): **Invite someone** (email plus role). With no email set up, the invite link is shown on screen to copy. **Audit** lists sign-ins and changes.

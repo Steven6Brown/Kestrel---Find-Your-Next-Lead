@@ -64,7 +64,7 @@ export default async function Today({ searchParams }) {
   const win = nextDaysWindow(7);
   const [tasks, waiting, counts, meetings, nc] = await Promise.all([
     dueTasks(BRAND, today, 7, addDays), needsFollowUp(BRAND, 15), stageCounts(BRAND),
-    listMeetings(BRAND, { ...win, limit: 20 }), nextStepCounts(BRAND, today),
+    listMeetings(BRAND, { ...win, limit: 20 }), nextStepCounts(BRAND, today, { checkBackup: isManager(user) }),
   ]);
   const steps = pickSteps(nc);
   const openTotal = STAGES.filter(([k]) => !CLOSED_STAGES.includes(k)).reduce((n, [k]) => n + (counts[k] || 0), 0);

@@ -24,7 +24,11 @@ Unit tests (42 in total) cover stages and the status sync, manual contacts witho
 ## PayPal invoicing (performed against a stand-in, not real PayPal)
 56 unit tests in total. A fake PayPal that behaves like the documented API (sign-in, idempotent create, send, status, expiry, server errors, network failure) is used to test the client (request shapes, headers, amounts as dollar strings, token reuse and refresh, safe errors, unexpected replies rejected), the invoice rules (no overbilling, deposits, balances, status groups, overdue), and the whole flow: draft, send, payment, reconcile, outstanding totals, retries, and brand isolation. In the browser the real screens were run against a local fake PayPal: connection test, create deposit draft (amount computed on the server), refusal to send without the confirmation tick, send, mark paid, Reconcile on Today, timeline entries, Invoices page.
 
+## Calendar (performed)
+61 unit tests in total. The newest cover the month grid (including year boundaries, months starting on every weekday, no repeated days), month parameter validation, per-day assembly and ordering, hidden cancelled meetings, scheduled scan days, money only for managers, brand isolation, contact choices, and the .ics export (escaping, folding, UTC, injection attempt, multi-byte characters). In the browser: today highlighted, items in cells, scheduling a meeting from the day panel, the .ics download, month navigation and bad parameter fallback, and the phone layout (no sideways scroll, list view).
+
 ## Not performed
+- Importing the .ics file into Google Calendar itself; daylight saving boundaries on the calendar; keyboard and screen reader checks of the calendar.
 - Any call to the real PayPal sandbox. The request bodies follow PayPal's documented examples and omit optional fields; PayPal may ask for more (for example invoicer details) when it sees a real request.
 - Webhooks, cancelling or refunding invoices, live mode, invoice screens at phone width, keyboard and screen reader checks.
 - A real PayPal sandbox call (no credentials yet) and a real Resend send.

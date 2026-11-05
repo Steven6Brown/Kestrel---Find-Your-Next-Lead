@@ -7,6 +7,7 @@ export default async function AdminLayout({ children }) {
   const user = await requireUser({ allowUnenrolled: true });
   const links = [
     ["/today", "Today"],
+    ["/calendar", "Calendar"],
     ["/pipeline", "Pipeline"],
     ["/leads", "Leads"],
     ["/clients", "Clients"],

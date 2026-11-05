@@ -128,6 +128,33 @@ export async function logMeetingAction(formData) {
   flash(back, "Meeting saved.");
 }
 
+/** Schedule a meeting from the calendar page, picking the person from a list. */
+export async function scheduleFromCalendarAction(formData) {
+  const user = await requireUser();
+  const target = /^(lead|client):(\d{1,9})$/.exec(String(formData.get("target") || ""));
+  const startsAt = localInputToIso(String(formData.get("startsAt") || ""));
+  const title = z.enum(MEETING_TITLES).safeParse(formData.get("title"));
+  const location = z.enum(keys(MEETING_LOCATIONS)).safeParse(formData.get("location"));
+  const month = /^\d{4}-\d{2}$/.test(String(formData.get("month") || "")) ? String(formData.get("month")) : "";
+  const back = `/calendar${month ? `?month=${month}` : ""}`;
+  if (!target) flash(back, "Choose who the meeting is with.", "bad");
+  if (!title.success || !location.success) flash(back, "Choose what kind of meeting and where.", "bad");
+  if (!startsAt) flash(back, "Pick the date and time.", "bad");
+  const day = new Date(startsAt);
+  const dest = `/calendar?month=${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}&date=${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+  try {
+    const meetingId = await store.createMeeting(BRAND, {
+      leadId: target[1] === "lead" ? Number(target[2]) : null, clientId: target[1] === "client" ? Number(target[2]) : null,
+      title: title.data, location: location.data, startsAt, notes: String(formData.get("notes") || "").slice(0, 2000), userId: user.id,
+    });
+    await audit(BRAND, user.id, "meeting_logged", `meeting ${meetingId} (calendar)`, (await clientInfo()).ip);
+  } catch (err) {
+    flash(dest, err.message, "bad");
+  }
+  refresh();
+  flash(dest, "Meeting scheduled.");
+}
+
 export async function setMeetingStatusAction(formData) {
   await requireUser();
   await store.setMeetingStatus(BRAND, id.parse(formData.get("meetingId")), z.enum(["scheduled", "done", "cancelled"]).parse(formData.get("status")));

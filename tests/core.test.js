@@ -1163,3 +1163,122 @@ test("a connection made before the schema grew repairs itself instead of failing
   delete globalThis.__kestrelDb;
   delete globalThis.__kestrelMigratedAt;
 });
+
+// ---------------- calendar ----------------
+
+test("calendar grid, month navigation and validation", async () => {
+  const c = await import("../lib/calendar.js");
+  assert.deepEqual(c.parseMonth("2026-11"), { year: 2026, month: 11 });
+  for (const bad of ["", "2026-13", "2026-00", "26-11", "2026-1", "abcd-ef", null, "1999-12", "2101-01"]) assert.equal(c.parseMonth(bad), null, String(bad));
+  assert.deepEqual(c.shiftMonth({ year: 2026, month: 12 }, 1), { year: 2027, month: 1 });
+  assert.deepEqual(c.shiftMonth({ year: 2026, month: 1 }, -1), { year: 2025, month: 12 });
+  assert.deepEqual(c.shiftMonth({ year: 2026, month: 5 }, 14), { year: 2027, month: 7 });
+  assert.equal(c.monthKey({ year: 2026, month: 3 }), "2026-03");
+  assert.equal(c.monthTitle({ year: 2026, month: 11 }), "November 2026");
+  const weeks = c.monthGrid({ year: 2026, month: 11 }); // Nov 1, 2026 is a Sunday; Nov 30 is a Monday
+  assert.equal(weeks.length, 5);
+  assert.ok(weeks.every((w) => w.length === 7));
+  assert.equal(weeks[0][0].date, "2026-11-01");
+  assert.equal(weeks[0][0].inMonth, true);
+  assert.equal(weeks[4][6].date, "2026-12-05");
+  assert.equal(weeks[4][6].inMonth, false);
+  const feb = c.monthGrid({ year: 2026, month: 2 }); // starts on a Sunday, exactly four weeks
+  assert.equal(feb.length, 4);
+  const may = c.monthGrid({ year: 2026, month: 5 }); // starts on a Friday, so it begins in April
+  assert.equal(may[0][0].date, "2026-04-26");
+  assert.equal(may[0][0].inMonth, false);
+  const days = weeks.flat().map((d) => d.date);
+  assert.equal(new Set(days).size, days.length, "no day appears twice");
+  assert.equal(c.localDay(new Date(2026, 10, 5, 23, 30).toISOString()), "2026-11-05");
+  assert.equal(c.dayAfterIso("2026-11-30"), c.dayStartIso("2026-12-01"));
+  assert.deepEqual(c.scheduledDays("weekdays", "2026-11-06", "2026-11-10"), ["2026-11-06", "2026-11-09", "2026-11-10"]);
+  assert.deepEqual(c.scheduledDays("weekly", "2026-11-01", "2026-11-30"), ["2026-11-02", "2026-11-09", "2026-11-16", "2026-11-23", "2026-11-30"]);
+  assert.equal(c.scheduledDays("daily", "2026-11-01", "2026-11-30").length, 30);
+  assert.deepEqual(c.scheduledDays("manual", "2026-11-01", "2026-11-30"), []);
+});
+
+test("calendar assembles meetings, follow-ups, invoices and scans per day, in order", async () => {
+  const c = await import("../lib/calendar.js");
+  const at = (d, h) => new Date(2026, 10, d, h, 0).toISOString();
+  const byDay = c.assembleCalendar({
+    meetings: [
+      { id: 1, title: "Intro call", location: "meet", starts_at: at(10, 15), status: "scheduled", lead_id: 5, lead_name: "Pat" },
+      { id: 2, title: "Check-in", location: "phone", starts_at: at(10, 9), status: "scheduled", client_id: 3, client_name: "Acme" },
+      { id: 3, title: "Cancelled one", location: "meet", starts_at: at(10, 11), status: "cancelled", lead_id: 5, lead_name: "Pat" },
+    ],
+    tasks: [{ id: 1, title: "Send the quote", due_on: "2026-11-10", lead_id: 5, lead_name: "Pat" }, { id: 2, title: "Out of range", due_on: "2027-01-01", lead_id: 5 }],
+    invoices: [{ id: 1, due_on: "2026-11-10", amount_cents: 125025, due_cents: 125025, currency: "USD", client_name: "Acme", invoice_number: "0001" }],
+    campaigns: [{ id: 9, name: "All businesses in Erie", enabled: true, frequency: "weekly", run_time: "06:00" }, { id: 10, name: "Paused", enabled: false, frequency: "daily", run_time: "06:00" }],
+  }, "2026-11-01", "2026-11-30");
+  const tenth = byDay["2026-11-10"];
+  assert.deepEqual(tenth.map((i) => i.type), ["meeting", "meeting", "task", "invoice"]);
+  assert.match(tenth[0].title, /Check-in/, "earlier meeting first");
+  assert.match(tenth[1].title, /Intro call/);
+  assert.ok(!tenth.some((i) => /Cancelled/.test(i.title)), "cancelled meetings are hidden");
+  assert.equal(tenth[0].href, "/clients/3");
+  assert.equal(tenth[1].href, "/leads/5");
+  assert.equal(tenth[3].title, "$1,250.25 from Acme");
+  assert.ok(!Object.values(byDay).flat().some((i) => i.title === "Out of range"), "outside the range is dropped");
+  assert.equal(byDay["2026-11-02"].find((i) => i.type === "scan").title, "All businesses in Erie", "weekly scan lands on Mondays");
+  assert.ok(!Object.values(byDay).flat().some((i) => i.title === "Paused"), "paused campaigns are hidden");
+});
+
+test("calendar data: range queries, money only for managers, brand isolation, contact choices", async () => {
+  const c = await import("../lib/calendar.js");
+  const crm = await import("../lib/crm.js");
+  const lead = await store.createContact("aquila", { name: "Calendar Person", source: "manual" });
+  const clientId = await store.createClient("aquila", { name: "Calendar Client" });
+  const when = crm.localInputToIso("2031-05-12T10:30");
+  const m = await store.createMeeting("aquila", { leadId: lead, title: "Intro call", location: "meet", startsAt: when });
+  await store.addTask("aquila", lead, { title: "Calendar follow-up", dueOn: "2031-05-14" });
+  const project = await store.createProject("aquila", clientId, { name: "Cal project", type: "website", status: "in_progress", quotedCents: 40000 });
+  const invoiceId = await store.createInvoiceRow("aquila", { projectId: project, clientId, kind: "full", amountCents: 40000, recipientEmail: "x@example.test", requestId: "cal-req" });
+  await store.markInvoiceCreated("aquila", invoiceId, { paypalId: "INV2-CAL-1" });
+  await store.applyInvoiceSync("aquila", invoiceId, { status: "SENT", invoiceNumber: "CAL1", viewUrl: null, dueCents: 40000, paidCents: null, dueOn: "2031-05-15" });
+  const range = { fromDay: "2031-05-01", toDay: "2031-05-31" };
+  const mgr = await store.calendarItems("aquila", { ...range, includeMoney: true });
+  assert.ok(mgr.meetings.some((x) => x.id === m));
+  assert.ok(mgr.tasks.some((x) => x.title === "Calendar follow-up"));
+  assert.equal(mgr.invoices.length, 1);
+  const member = await store.calendarItems("aquila", { ...range, includeMoney: false });
+  assert.equal(member.invoices.length, 0, "members never receive invoice rows");
+  const byDay = c.assembleCalendar(mgr, range.fromDay, range.toDay);
+  assert.equal(byDay["2031-05-12"][0].type, "meeting");
+  assert.equal(byDay["2031-05-14"][0].type, "task");
+  assert.equal(byDay["2031-05-15"][0].type, "invoice");
+  const outside = await store.calendarItems("aquila", { fromDay: "2031-06-01", toDay: "2031-06-30", includeMoney: true });
+  assert.equal(outside.meetings.length + outside.tasks.length + outside.invoices.length, 0);
+  const other = await store.calendarItems("other", { ...range, includeMoney: true });
+  assert.equal(other.meetings.length + other.tasks.length + other.invoices.length, 0, "another brand sees nothing");
+  const choices = await store.contactChoices("aquila");
+  assert.ok(choices.some((x) => x.value === "client:" + clientId && /client/.test(x.label)));
+  assert.ok(choices.some((x) => x.value === "lead:" + lead));
+  assert.deepEqual(await store.contactChoices("other"), []);
+});
+
+test("ics export escapes text, folds long lines, and cannot inject events", async () => {
+  const ics = await import("../lib/ics.js");
+  assert.equal(ics.escapeText("a,b;c\\d\nline2"), "a\\,b\\;c\\\\d\\nline2");
+  const nasty = "Evil\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nSUMMARY:Injected";
+  const out = ics.buildIcs([
+    { uid: "meeting-1@kestrel", startIso: "2031-05-12T14:30:00.000Z", durationMinutes: 30, summary: nasty, location: "Google Meet", description: "x".repeat(300) + " é".repeat(60), status: "scheduled" },
+    { uid: "bad uid;<>\r\n", startIso: "not a date", summary: "skipped" },
+    { uid: "meeting-2@kestrel", startIso: "2031-05-13T09:00:00.000Z", summary: "Cancelled", status: "cancelled" },
+  ], { now: new Date("2031-01-01T00:00:00Z") });
+  const lines = out.split("\r\n");
+  assert.equal(lines[0], "BEGIN:VCALENDAR");
+  assert.equal(lines.at(-2), "END:VCALENDAR");
+  const whole = out.replace(/\r\n /g, "").split("\r\n"); // unfolded, one entry per real calendar line
+  assert.equal(whole.filter((l) => l === "BEGIN:VEVENT").length, 2, "exactly the two valid events, nothing injected");
+  assert.equal(whole.filter((l) => l === "END:VEVENT").length, 2);
+  assert.ok(whole.some((l) => l.startsWith("SUMMARY:Evil\\nEND:VEVENT")), "the attack text stayed inside one escaped SUMMARY value");
+  assert.ok(out.includes("DTSTART:20310512T143000Z"));
+  assert.ok(out.includes("DTEND:20310512T150000Z"), "30 minute default");
+  assert.ok(out.includes("DTSTAMP:20310101T000000Z"));
+  assert.ok(out.includes("STATUS:CANCELLED"));
+  assert.ok(!lines.some((l) => l === "SUMMARY:Injected"));
+  assert.ok(lines.every((l) => Buffer.byteLength(l, "utf8") <= 75), "every line is folded to 75 bytes");
+  assert.ok(lines.filter((l) => l.startsWith("UID:")).every((l) => /^UID:[A-Za-z0-9@._-]*$/.test(l)), "uids are sanitized");
+  const unfolded = out.replace(/\r\n /g, "");
+  assert.ok(unfolded.includes("é"), "multi-byte characters survive folding intact");
+});

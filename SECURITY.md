@@ -39,6 +39,12 @@
 - Invoice links are accepted only as https pages on paypal.com.
 - Brand scoped everywhere, and a project in another brand cannot be invoiced (tested).
 
+## Calendar
+
+- The calendar and the .ics download need a signed-in session; the download is not a public feed. Invoice rows are only loaded for owners and administrators.
+- Month and date parameters are validated and fall back to today; meeting targets are matched against a strict pattern and re-checked against the brand in the store.
+- Calendar text is escaped per RFC 5545 and lines are folded, so a meeting title cannot add fields or events to the file (tested with an injection attempt).
+
 ## Other controls
 
 - Secrets only in environment variables; `.env*` and `data/` are git-ignored.

@@ -4,6 +4,8 @@ Finds local businesses that have no website, builds a concept mockup for each, a
 
 Nothing is ever sent automatically. Sending is a manual click on an approved draft, behind hard guardrails.
 
+New here? **GUIDE.md** is the short step-by-step guide to starting, testing and using everything.
+
 ## Setup
 
 ```bash

@@ -1,108 +1,125 @@
+<div align="center">
+
 # Kestrel
 
-Finds local businesses that have no website, builds a concept mockup for each, and drafts a cold email for a human to review and send. Operated by Aquila Digital LLC, built so another brand can be white-labeled later.
+**Find local businesses that need a better website, show them an honest concept, and run the sale from first contact to paid invoice.**
 
-Nothing is ever sent automatically. Sending is a manual click on an approved draft, behind hard guardrails.
+An internal tool by [Aquila Digital LLC](https://www.aquiladigital.net)
 
-New here? **GUIDE.md** is the short step-by-step guide to starting, testing and using everything.
+![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
+![Postgres](https://img.shields.io/badge/Postgres-PGlite%20%7C%20pg-336791?logo=postgresql&logoColor=white)
+![Tailwind 4](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Free to run](https://img.shields.io/badge/data%20sources-free-2E7D32)
+![Never auto-sends](https://img.shields.io/badge/email-never%20auto--sent-B8860B)
 
-## Setup
+<img src="docs/screenshots/today.jpg" alt="Kestrel's Today page: what needs attention right now" width="860">
+
+</div>
+
+## What it does
+
+| | |
+|---|---|
+| **Find** | Scans an area on free OpenStreetMap data for local businesses, no paid API. |
+| **Verify** | Checks each "no website" lead against free Overture Maps data so you never pitch a business that already has a site. |
+| **Score** | Audits existing sites for HTTPS, speed, accessibility, freshness and contact options, then lists the weakest as redesign targets. |
+| **Show** | Builds a concept page for each target, clearly labelled as a concept, built from public listing details and the audit findings. |
+| **Reach out** | Writes outreach drafts for you to review. **Nothing is ever emailed automatically**; sending is a manual click behind hard guardrails (daily cap, do-not-contact list, unsubscribe link). |
+| **Run the sale** | Pipeline, deals with a probability weighted forecast, tasks, calendar, clients, projects and PayPal invoices. |
+| **Learn** | Insights show replies, wins and money, and every percentage carries its counts so small samples are not dressed up as trends. |
+| **Stay safe** | Encrypted backups, per-contact export and delete, duplicate merge, CSV import, tags, saved views and bulk actions. |
+| **Post** | A separate Social module drafts and schedules posts for your apps, with an approval gate. |
+
+## How a lead moves through it
+
+```mermaid
+flowchart LR
+  A[Scan an area] --> B[Check websites]
+  B -->|no site| C[Concept page + draft]
+  B -->|has a site| D[Quality score]
+  D -->|low score| E[Redesign concept + draft]
+  C --> F[You review and send]
+  E --> F
+  F --> G[Follow up] --> H[Deal] --> I[Client + project] --> J[PayPal invoice]
+```
+
+## See it
+
+All screenshots use a fictional demo dataset. No real people or businesses appear.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/prospects.jpg" alt="Prospects list with filters"><br><sub><b>Prospects.</b> Filter by website status, redesign need and duplicates.</sub></td>
+    <td width="50%"><img src="docs/screenshots/redesign.jpg" alt="Redesign targets ranked by score"><br><sub><b>Redesign targets.</b> Weakest sites first, with the plain reasons why.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/concept.jpg" alt="A labelled concept page"><br><sub><b>Concept page.</b> Honestly labelled, and it states what the automated check found.</sub></td>
+    <td width="50%"><img src="docs/screenshots/deals.jpg" alt="Deals and forecast"><br><sub><b>Deals.</b> Open pipeline, forecast and expected money by month.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/insights.jpg" alt="Insights" width="50%"><br><sub><b>Insights.</b> Emails, replies, wins and money, each with the counts behind it.</sub></td>
+  </tr>
+</table>
+
+## Principles
+
+- **Free to run.** OpenStreetMap, Overture Maps and the built-in audit cost nothing. Paid services (Google Places, AI writing help) are optional and off by default.
+- **Honest by design.** Concept pages say they are concepts, never copy a site, and mark anything unconfirmed as a placeholder.
+- **A human sends every email.** Drafts wait for review. There is no auto-send path.
+- **Local first.** Your data lives on your computer in an embedded Postgres (PGlite). Production can use any Postgres through `DATABASE_URL`.
+
+## Quick start
+
+Requires Node 20 or newer.
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill in values
+cp .env.example .env.local   # fill in what you need; almost everything is optional locally
 npm run dev
 ```
 
-Requires Node 20+. With no `DATABASE_URL`, local dev uses an embedded Postgres (PGlite) stored in `./data/pglite`; production needs `DATABASE_URL`. Open http://localhost:3000. The first visit shows a one-time **Create the owner account** page (on localhost nothing else is needed; on a hosted URL set `SETUP_TOKEN` and enter it there). After that everything is behind sign-in: email and password, optional two-factor codes, password reset by emailed link, invitations, roles, session management and an audit log (see SECURITY.md). With no email provider configured, reset and invite links are written to `data/outbox.log` so you can test locally.
-
-Commands: `npm test` (unit tests), `npm run lint`, `npm run build`.
-
-## What you must provide (see `.env.example`)
-
-| Input | Variable |
-|---|---|
-| Contact for OpenStreetMap requests (free source) | `OSM_CONTACT` |
-| Optional: Google Cloud key with Places API (New) and billing, only for `DISCOVERY_PROVIDER=google` | `GOOGLE_PLACES_API_KEY` |
-| Resend API key (sender domain must be verified in Resend) | `RESEND_API_KEY` |
-| Sender name and email, reply-to | `SENDER_NAME`, `SENDER_EMAIL`, `REPLY_TO_EMAIL` |
-| Real physical mailing address (CAN-SPAM) | `MAILING_ADDRESS` |
-| Postgres connection string (production) | `DATABASE_URL` |
-| Public https URL of the deployed app | `APP_BASE_URL` |
-| Random secret (required on Vercel; auto-generated locally) | `APP_SECRET` |
-| Scheduler secret (32+ random characters) | `CRON_SECRET` |
-| Hosted first-run claim code | `SETUP_TOKEN` |
-
-Target cities and categories are entered in the dashboard on each run.
-
-## The three phases
-
-1. **Discovery.** Default source is **OpenStreetMap** (Nominatim plus Overpass): free, no key, no billing. Set `OSM_CONTACT` to your email or URL (their usage policy requires it). Categories are limited to a built-in list (plumber, restaurant, barber, dentist and about 35 more, see `lib/overpass.js`). OSM data is volunteer-maintained, so a missing website tag often just means nobody added it; the lead page warns you to verify by hand before outreach. Optional paid source: set `DISCOVERY_PROVIDER=google` to use the Places API (New), where `websiteUri` comes back in the same call. Results dedupe on Google Place ID per brand. A listing whose only "website" is Facebook, Instagram, Linktree, Yelp and similar counts as no website and is flagged "social page only".
-2. **Mockup.** Each no-website lead gets an unguessable hosted page at `/m/<token>`, rendered from real data (name, category, city, phone, address). Unknowns are marked placeholders; copy is labeled draft; no stock photos, gradients, purple, or three-card rows. Pages are `noindex`.
-3. **Outreach.** A draft is created per lead and lands in the review queue. You add a recipient email (Google does not provide one), edit, approve, tick "I reviewed this", and click send.
-
-## Send guardrails (all enforced server side, `lib/email.js`)
-
-Draft approved; valid recipient saved; address not opted out; brand sender and physical address set and present in the body; unsubscribe link present (signed per recipient, plus `List-Unsubscribe` one-click headers); no unfilled placeholders; `APP_BASE_URL` is public https; Resend key and secret set; daily cap (`SEND_DAILY_CAP`, default 10).
-
-Opt-outs: link clicks are recorded instantly. For replies saying STOP, add the address on the Opt-outs page the same day (legal limit is 10 days).
-
-## White-label design
-
-Brand data lives in `config/brands.js` and is passed as a `brand` object to the mockup and email code. Every table row is scoped by `brand_id`. Adding a brand means adding a config entry; no core logic changes. Not built for v1: per-brand logins, billing, or a brand picker in the UI (the dashboard uses the default brand).
-
-## Deploying to Vercel
-
-1. Create a Neon (or Vercel Postgres) database and copy the pooled connection string.
-2. `vercel link`, then add every variable from `.env.example` in the Vercel project settings (`DATABASE_URL`, `APP_BASE_URL` set to the production https URL, `ADMIN_PASSWORD`, `APP_SECRET`, and so on).
-3. Deploy. Tables are created automatically on first use (`CREATE TABLE IF NOT EXISTS`).
-
-Mockup and opt-out links must be publicly reachable, so the app has to be hosted before real email goes out. Note that the in-memory rate limiter and send lock are per serverless instance.
-
-## Campaigns and the Leads database
-
-A campaign is just where to scan: pick a state, tick the cities (or Select all), choose a schedule. Kestrel then collects **every named business** in those cities, with or without a website, into one database. There is no business type to decide up front.
-
-The **Leads** page is where you decide who becomes a lead. Narrow the list with buttons: website (none, social page only, has one), phone number, website check, status, ready for outreach, business type and city (with counts). Then create outreach drafts for the ready leads in that view, or download the view as a CSV. A scan is split into six business families per city, remembers what it finished, and a rerun skips anything scanned in the last 7 days, so a scan that hit its time limit simply continues next time.
-
-## PayPal invoicing (sandbox first)
-
-1. Sign in at developer.paypal.com, open Apps & Credentials, make sure the **Sandbox** toggle is selected, and create an app. Copy its Client ID and Secret.
-2. Put them in `.env.local` yourself (never paste them into chat): `PAYPAL_CLIENT_ID=...` and `PAYPAL_CLIENT_SECRET=...`. Leave `PAYPAL_ENV=sandbox`. Restart Kestrel.
-3. Open **Connections** and press **Test connection** on PayPal.
-4. On a client's page, give the project a quoted amount and make sure the client has an email. Choose Full amount, 50% deposit or Remaining balance and press **Create draft invoice in PayPal**. Nothing is emailed yet.
-5. Review it, tick the confirmation box, and press **Send invoice by PayPal**. PayPal emails the client and hosts the payment page. For testing, use the email of a sandbox personal account as the client email.
-6. Payments appear when you press **Reconcile with PayPal** (on Today or Invoices). Kestrel runs on your computer, so PayPal cannot call it; Reconcile asks PayPal instead.
-
-Live money stays blocked until you deliberately set `PAYPAL_ALLOW_LIVE=1` and `PAYPAL_ENV=live` with live credentials. Cancelling a sent invoice is not built yet; do that in PayPal.
-
-## If older scan results seem to be missing
-
-Versions before 0.5 kept the database inside the project folder (`data`). Kestrel now keeps it in the app data folder and copies the old data over automatically the first time, but only if the new location does not exist yet. If it was created empty first (for example by a server that was already running), your old results stay in `data`. To bring them over without touching your current login:
+Open http://localhost:3000. The first visit asks you to create the owner account. After that everything sits behind sign-in, with optional two-factor codes, roles and an audit log.
 
 ```bash
-node scripts/recover-legacy-data.mjs
-node scripts/recover-legacy-data.mjs --yes
+npm test        # unit tests
+npm run lint
+npm run build
 ```
 
-Stop Kestrel first. The first command is a dry run that only reports counts. The second backs up your current database, then adds the old leads, searches and runs, skipping anything that already exists.
+### The settings that matter
 
-## Where your data lives
+| Variable | What it is for |
+|---|---|
+| `OSM_CONTACT` | An email or URL that identifies you to OpenStreetMap (their policy requires it). |
+| `DATABASE_URL` | Postgres connection string. Leave blank locally to use embedded PGlite. |
+| `APP_BASE_URL` | Public https URL used in concept links and unsubscribe links. |
+| `RESEND_API_KEY`, `SENDER_*`, `MAILING_ADDRESS` | Needed before any real email is sent. Sending stays blocked without a mailing address. |
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | PayPal invoicing, sandbox first. Live money stays blocked until you opt in. |
+| `BACKUP_DIR`, `BACKUP_PASSPHRASE` | Where backups go and the passphrase that encrypts them. |
 
-The local database, generated secret and mail outbox are kept in %LOCALAPPDATA%\Kestrel (override with `KESTREL_DATA_DIR`), not in the project folder, because this project sits under OneDrive and cloud sync can damage a database's many small files. On the first start of a version that does this, existing data from the old `data\pglite` folder is copied over automatically and the old copy is left as a backup.
+Every variable is explained in [.env.example](.env.example).
 
-Stop the app with Ctrl+C (or close the terminal) as usual. If it is ever stopped abruptly, the next start clears the leftover lock and keeps your data, and any scan that was cut off is marked "Interrupted". Only one copy of the app can use the local database at a time.
+## Documentation
 
-Scans use the free OpenStreetMap servers, which are sometimes slow or busy (one search can take a minute or more). A running scan shows live progress (searches done, leads found), stops after 25 minutes, and gives up early if three searches in a row fail. Results found so far are always saved.
+| Read | For |
+|---|---|
+| [GUIDE.md](GUIDE.md) | Step by step: starting, testing and using every feature. |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | How it is built and why. |
+| [SECURITY.md](SECURITY.md) | Sign-in, sessions, two-factor and the audit log. |
+| [PRIVACY.md](PRIVACY.md) | What is stored, export and delete, and what is kept after a deletion. |
+| [TESTING.md](TESTING.md) | What is tested and how to run it. |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version. |
 
-## Scheduled scans (Windows Task Scheduler)
+## Honest status
 
-Campaigns are picked with buttons only (state, cities, schedule). Open a campaign and the page shows the exact one-line command to register it, for example:
+Kestrel is a working internal tool, built in the open and still young.
 
-```powershell
-.\scripts\register-task.ps1 -CampaignId 1 -Schedule Daily -Time 06:00
-```
+- **Verified:** discovery, website check, audit, concept pages, drafts, pipeline, deals, clients, projects, calendar, insights, backups, privacy tools, duplicates, import and search, covered by an automated test suite.
+- **Not yet verified:** PayPal has only been tested against a stand-in, so it still needs a run against a real PayPal sandbox. Social platform connections have not been run against live APIs.
+- **Not done yet:** hosting. It runs locally today, so a booking page, PayPal webhooks and two-way Google Calendar sync wait for a hosted deployment.
+- **Limits:** it has not yet been used on months of real data.
 
-Add `CRON_SECRET` to `.env.local` first. The task calls the running app (`scripts/run-campaign.ps1`, logged to `data\scheduler.log`), so the app must be running at that time, for example `npm run build` then `npm run start` left open or started at logon. The result appears under Run history. Remove a job with `Unregister-ScheduledTask -TaskName "Kestrel campaign 1"`.
+## About
 
-Docs: [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md), [TESTING.md](TESTING.md), [CHANGELOG.md](CHANGELOG.md).
+Built by [Aquila Digital LLC](https://www.aquiladigital.net) to find and serve local businesses that deserve a better web presence. Questions about the work behind it: visit the site.

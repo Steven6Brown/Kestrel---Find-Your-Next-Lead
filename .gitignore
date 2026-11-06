@@ -10,3 +10,7 @@ data/
 next-env.d.ts
 .next-build/
 .next-*/
+
+# local notes for editor tooling
+CLAUDE.md
+.claude/

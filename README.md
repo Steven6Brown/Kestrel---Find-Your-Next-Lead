@@ -123,3 +123,7 @@ Kestrel is a working internal tool, built in the open and still young.
 ## About
 
 Built by [Aquila Digital LLC](https://www.aquiladigital.net) to find and serve local businesses that deserve a better web presence. Questions about the work behind it: visit the site.
+
+## License
+
+Shared as a portfolio piece so you can read the code and see how it works. Copyright (c) Aquila Digital LLC. All rights reserved: please do not copy or reuse it without asking first.

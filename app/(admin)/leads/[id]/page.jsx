@@ -1,5 +1,6 @@
 import { isManager, requireUser } from "@/lib/auth";
 import CrmPanels from "@/components/CrmPanels";
+import DealsPanel from "@/components/DealsPanel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Flash from "@/components/Flash";
@@ -90,6 +91,7 @@ export default async function LeadPage({ params, searchParams }) {
       </dl>
 
       <CrmPanels lead={lead} />
+      <DealsPanel lead={lead} />
 
       <section aria-labelledby="contact-h" className="mt-8 border border-line bg-surface p-5">
         <h2 id="contact-h" className="text-2xl font-semibold">Contact and notes</h2>

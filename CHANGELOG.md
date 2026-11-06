@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.0 (branch crm-core)
+- Deals (under Follow up, between Pipeline and Calendar): the money side of a contact. A deal has an amount, a stage (Discovery, Proposal, Negotiation), a chance to win that starts from the stage but can be changed, and an expected close date. The Deals page shows open pipeline, forecast (amount times chance), won in the last 90 days, win rate with counts, a forecast chart by month, a board by stage with a Move button, and recently closed deals.
+- Winning a deal turns the contact into a client and creates a project at the deal's amount, ready for invoicing. Losing needs a reason, and the contact is marked lost only when it has no other open deal. A lost deal can be reopened. Moving a deal to Proposal marks the contact Proposal sent.
+- Deals appear on the contact page, in the contact export, in what a delete removes, and in backups. Overdue deals are a Needs attention step.
+
 ## 2.4.0 (branch crm-core): AI writing
 - Social, AI writing: tell the AI what to promote and the real facts, and it writes drafts for each platform (model claude-opus-5-5, SOCIAL_AI_MODEL changes it). Drafts go through the same approval as everything else. Owner and admin only.
 - Monthly spending cap (default 5 USD, SOCIAL_AI_MONTHLY_CAP_USD) with an estimate shown on the page; a call is refused before any money is spent if it could pass the cap. New dependency: @anthropic-ai/sdk. New table: ai_usage.

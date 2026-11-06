@@ -1891,7 +1891,7 @@ test("the menu follows the order of the work and highlights the right page", asy
   const nav = await import("../lib/nav.js");
   const all = nav.NAV_GROUPS.flatMap((g) => g.items);
   assert.deepEqual(nav.NAV_GROUPS.map((g) => g.key), ["home", "find", "reach", "follow", "deliver", "settings"], "find, reach out, follow up, deliver");
-  assert.ok(all.length <= 10, "a short menu, not thirteen links");
+  assert.ok(all.length <= 11, "a short menu, not thirteen links");
   assert.equal(new Set(all.map((i) => i.href)).size, all.length, "no page appears twice");
   const active = (p) => all.filter((i) => nav.isActive(i, p)).map((i) => i.label);
   assert.deepEqual(active("/"), ["Scan areas"], "the root only matches itself");
@@ -1949,7 +1949,7 @@ test("next step counts come from real data and stay inside the brand", async () 
   for (const k of ["dueNow", "review", "approved", "lookups", "unscored"]) assert.ok(Number.isInteger(c[k]) && c[k] >= 0, k);
   assert.equal(c.backupDue, false, "nobody is nagged about backups unless the page asks");
   const other = await n.nextStepCounts("other", todayStr());
-  assert.deepEqual(other, { dueNow: 0, review: 0, approved: 0, lookups: 0, unscored: 0, backupDue: false }, "another brand sees nothing of ours");
+  assert.deepEqual(other, { dueNow: 0, review: 0, approved: 0, lookups: 0, unscored: 0, dealsOverdue: 0, backupDue: false }, "another brand sees nothing of ours");
   // a lead with a follow-up due today shows up
   const id = await seedVerifyLead("Next Step Lead Verify7");
   await store.addTask("aquila", id, { title: "Call back", dueOn: todayStr() });
@@ -2176,7 +2176,7 @@ test("the menu has Insights right under Today", async () => {
   const all = nav.NAV_GROUPS.flatMap((g) => g.items);
   assert.deepEqual(all.filter((i) => nav.isActive(i, "/insights")).map((i) => i.label), ["Insights"]);
   assert.deepEqual(all.filter((i) => nav.isActive(i, "/insights/anything")).map((i) => i.label), ["Insights"]);
-  assert.ok(all.length <= 10);
+  assert.ok(all.length <= 11);
 });
 
 test("drafts remember which template made them, and old drafts are filled in by lead type", async () => {
@@ -2421,7 +2421,7 @@ test("deleting a contact removes it, keeps only a do not contact entry, and stop
   await store.addTask("aquila", lead, { title: "t", dueOn: "2026-12-01" });
   await store.createMeeting("aquila", { leadId: lead, title: "m", location: "phone", startsAt: new Date().toISOString() });
   const sum = await privacy.deleteSummary("aquila", lead);
-  assert.deepEqual(sum, { drafts: 1, activities: (await query("SELECT COUNT(*)::int AS n FROM activities WHERE lead_id = ?", [lead]))[0].n, tasks: 1, meetings: 1 });
+  assert.deepEqual(sum, { drafts: 1, activities: (await query("SELECT COUNT(*)::int AS n FROM activities WHERE lead_id = ?", [lead]))[0].n, tasks: 1, meetings: 1, deals: 0 });
   assert.equal((await privacy.deleteContact({ brandId: "other", leadId: lead })).deleted, false, "another brand cannot delete it");
   assert.ok(await store.getLead("aquila", lead));
   const r = await privacy.deleteContact({ brandId: "aquila", leadId: lead, userId: null, ip: "127.0.0.1" });
@@ -2487,4 +2487,215 @@ test("next step: a backup reminder comes last, only when asked, and only with da
   assert.equal((await n.nextStepCounts("aquila", todayStr(), { checkBackup: true })).backupDue, true, "there is data and no backup in the test data folder");
   assert.equal((await n.nextStepCounts("aquila", todayStr(), { checkBackup: false })).backupDue, false);
   assert.equal((await n.nextStepCounts("brand-with-no-data", todayStr(), { checkBackup: true })).backupDue, false, "an empty brand has nothing to back up");
+});
+
+// ---------------- deals and forecast ----------------
+
+test("deal input is checked: money, chance, date, type, and sizes", async () => {
+  const d = await import("../lib/deals.js");
+  const ok = d.validateDealInput({ title: "  Site for Joe ", amount: "2,500.50", probability: "", expectedCloseOn: "2026-12-01", type: "app" });
+  assert.deepEqual(ok, { ok: true, value: { title: "Site for Joe", amountCents: 250050, probability: 20, expectedCloseOn: "2026-12-01", type: "app" } });
+  assert.equal(d.validateDealInput({ title: "x", probability: "" }, { stage: "proposal" }).value.probability, 50, "blank chance takes the stage's usual figure");
+  assert.equal(d.validateDealInput({ title: "x", probability: "" }, { stage: "negotiation" }).value.probability, 75);
+  assert.equal(d.validateDealInput({ title: "x", probability: "35" }).value.probability, 35, "an explicit chance wins");
+  assert.equal(d.validateDealInput({ title: "x", probability: "0" }).value.probability, 0);
+  assert.equal(d.validateDealInput({ title: "x", probability: "100" }).value.probability, 100);
+  const bare = d.validateDealInput({ title: "x" });
+  assert.deepEqual([bare.value.amountCents, bare.value.expectedCloseOn, bare.value.type], [null, null, "website"], "amount and date are optional");
+  assert.equal(d.validateDealInput({ title: "x", type: "<script>" }).value.type, "website", "an unknown type falls back, never passes through");
+  const bad = (input) => d.validateDealInput(input);
+  assert.match(bad({ title: "" }).errors[0], /name/);
+  assert.match(bad({ title: "   " }).errors[0], /name/);
+  assert.match(bad({ title: "x".repeat(121) }).errors[0], /too long/);
+  assert.equal(bad({ title: "x".repeat(120) }).ok, true);
+  for (const amount of ["abc", "$-5", "1e5", "12.345", "-1", "1,2,3x"]) assert.match(bad({ title: "x", amount }).errors[0], /plain number/, amount);
+  assert.match(bad({ title: "x", amount: "20,000,001" }).errors[0], /too large/);
+  assert.equal(bad({ title: "x", amount: "20000000" }).ok, true, "exactly the limit is allowed");
+  assert.equal(bad({ title: "x", amount: "$99" }).value.amountCents, 9900);
+  for (const probability of ["101", "-1", "5.5", "abc", "1000", "1e1"]) assert.match(bad({ title: "x", probability }).errors[0], /0 to 100/, probability);
+  for (const expectedCloseOn of ["2026-13-45", "tomorrow", "12/01/2026", "2026-1-1x"]) assert.match(bad({ title: "x", expectedCloseOn }).errors[0], /real date/, expectedCloseOn);
+  assert.equal(bad({ title: "", amount: "abc", probability: "999", expectedCloseOn: "nope" }).errors.length, 4, "every problem is reported at once");
+  assert.equal(d.weightedCents({ amount_cents: 1000000, probability: 50 }), 500000);
+  assert.equal(d.weightedCents({ amount_cents: null, probability: 90 }), 0);
+  assert.equal(d.weightedCents({ amount_cents: 10001, probability: 33 }), 3300, "rounded to a whole cent");
+  assert.equal(d.weightedCents({ amount_cents: 500, probability: null }), 0);
+  assert.deepEqual(["discovery", "proposal", "negotiation"].map(d.nextDealStage), ["proposal", "negotiation", null]);
+  assert.deepEqual(["discovery", "proposal", "negotiation", "won", "lost", "x"].map(d.dealStageLabel), ["Discovery", "Proposal", "Negotiation", "Won", "Lost", "x"]);
+  assert.equal(d.isOpenStage("won"), false);
+  assert.equal(d.lostReasonLabel("price"), "Price");
+  assert.equal(d.lostReasonLabel("nope"), "");
+});
+
+function dealFixture() {
+  const iso2 = (s) => `${s}T12:00:00.000Z`;
+  return [
+    { id: 1, stage: "discovery", amount_cents: 1000000, probability: 20, expected_close_on: "2026-11-20" },
+    { id: 2, stage: "proposal", amount_cents: 2000000, probability: 50, expected_close_on: "2026-12-15" },
+    { id: 3, stage: "negotiation", amount_cents: 500000, probability: 75, expected_close_on: "2026-10-30" },
+    { id: 4, stage: "discovery", amount_cents: 300000, probability: 20, expected_close_on: null },
+    { id: 5, stage: "proposal", amount_cents: null, probability: 50, expected_close_on: "2026-11-05" },
+    { id: 6, stage: "negotiation", amount_cents: 400000, probability: 75, expected_close_on: "2027-06-01" },
+    { id: 7, stage: "won", amount_cents: 800000, probability: 100, created_at: iso2("2026-09-01"), closed_at: iso2("2026-10-11") },
+    { id: 8, stage: "won", amount_cents: 400000, probability: 100, created_at: iso2("2026-10-01"), closed_at: iso2("2026-10-21") },
+    { id: 9, stage: "lost", amount_cents: 700000, probability: 0, created_at: iso2("2026-08-20"), closed_at: iso2("2026-09-10"), lost_reason: "price" },
+    { id: 10, stage: "lost", amount_cents: 100000, probability: 0, created_at: iso2("2026-01-01"), closed_at: iso2("2026-01-10"), lost_reason: "timing" },
+  ];
+}
+
+test("forecast: open value, weighted value, timeline buckets, and what cannot be placed", async () => {
+  const d = await import("../lib/deals.js");
+  const f = d.computeForecast(dealFixture(), { today: "2026-11-05" });
+  assert.deepEqual(f.open, { count: 6, cents: 4200000, weightedCents: 1935000, overdueCount: 1, noDateCount: 1, noAmountCount: 1 });
+  assert.deepEqual(f.buckets.map((b) => b.label), ["Overdue", "Nov '26", "Dec", "Jan '27", "Feb", "Mar", "Apr", "Later"]);
+  assert.deepEqual(f.buckets.map((b) => b.values), [[500000, 375000], [1000000, 200000], [2000000, 1000000], [0, 0], [0, 0], [0, 0], [0, 0], [400000, 300000]]);
+  const placed = f.buckets.reduce((a, b) => a + b.values[0], 0);
+  assert.equal(placed, f.open.cents - 300000, "every dollar is on the timeline except the one deal with no date");
+  assert.equal(f.buckets.reduce((a, b) => a + b.values[1], 0), f.open.weightedCents - 60000, "the same for the weighted figure");
+  assert.deepEqual(f.won, { count: 2, cents: 1200000 });
+  assert.equal(f.lost.count, 1, "the January loss is outside the 90 days");
+  assert.deepEqual(f.winRate, { num: 2, den: 3, pct: 67, small: true });
+  assert.equal(f.avgWonCents, 600000);
+  assert.equal(f.avgDaysToClose, 30);
+  assert.deepEqual(f.lostReasons, [{ key: "price", label: "Price", count: 1 }]);
+  const wide = d.computeForecast(dealFixture(), { today: "2026-11-05", closedWithinDays: 400 });
+  assert.equal(wide.lost.count, 2, "a longer window includes the older loss");
+  const empty = d.computeForecast([], { today: "2026-11-05" });
+  assert.deepEqual(empty.open, { count: 0, cents: 0, weightedCents: 0, overdueCount: 0, noDateCount: 0, noAmountCount: 0 });
+  assert.equal(empty.buckets.length, 6, "no overdue or later bucket when there is nothing there");
+  assert.equal(empty.avgWonCents, null);
+  assert.equal(empty.avgDaysToClose, null);
+  assert.deepEqual(empty.winRate, { num: 0, den: 0, pct: null, small: true });
+  const roll = d.computeForecast([{ id: 1, stage: "discovery", amount_cents: 100, probability: 10, expected_close_on: "2027-01-31" }], { today: "2026-12-20", months: 3 });
+  assert.deepEqual(roll.buckets.map((b) => b.label), ["Dec '26", "Jan '27", "Feb"], "the year rolls over");
+  assert.deepEqual(roll.buckets[1].values, [100, 10]);
+  assert.equal(d.computeForecast([{ id: 1, stage: "discovery", amount_cents: 100, probability: 10, expected_close_on: "2026-11-05" }], { today: "2026-11-05" }).open.overdueCount, 0, "due today is not overdue");
+});
+
+test("a deal moves through stages, nudging the contact, and a bad move is refused", async () => {
+  const lead = await seedVerifyLead("Deal Move Lead Verify15");
+  const id = await store.createDeal("aquila", lead, { title: "Website", amountCents: 100000, expectedCloseOn: "2026-12-01", type: "website" });
+  let deal = await store.getDeal("aquila", id);
+  assert.deepEqual([deal.stage, deal.probability, deal.amount_cents, deal.lead_name], ["discovery", 20, 100000, "Deal Move Lead Verify15"]);
+  assert.ok((await store.listActivities("aquila", lead)).some((a) => /Deal added: Website/.test(a.body)), "the timeline records it");
+  assert.equal((await store.moveDeal("aquila", id, "discovery")).changed, false, "same stage does nothing");
+  assert.equal((await store.moveDeal("aquila", id, "proposal")).changed, true);
+  deal = await store.getDeal("aquila", id);
+  assert.deepEqual([deal.stage, deal.probability, deal.lead_stage], ["proposal", 50, "proposal_sent"], "a proposal moves the contact to Proposal sent");
+  await store.moveDeal("aquila", id, "negotiation");
+  assert.equal((await store.getDeal("aquila", id)).probability, 75);
+  await assert.rejects(store.moveDeal("aquila", id, "won"), /open stage/);
+  await assert.rejects(store.moveDeal("aquila", id, "bogus"), /open stage/);
+  await assert.rejects(store.moveDeal("other", id, "proposal"), /Only an open deal/, "another brand cannot move it");
+  // the contact is never pulled backwards or moved when already further on
+  const further = await seedVerifyLead("Deal Further Lead Verify15");
+  await store.setStage("aquila", further, "won");
+  const d2 = await store.createDeal("aquila", further, { title: "More work" });
+  await store.moveDeal("aquila", d2, "proposal");
+  assert.equal((await store.getLead("aquila", further)).stage, "won");
+  // the contact must belong to the brand
+  await assert.rejects(store.createDeal("other", lead, { title: "Stolen" }), /Contact not found/);
+  await assert.rejects(store.createDeal("aquila", lead, { title: "x", stage: "won" }), /open stage/);
+  // editing
+  assert.equal(await store.updateDeal("aquila", id, { title: "Website v2", amountCents: 250000, probability: 60, expectedCloseOn: null, type: "app" }), true);
+  deal = await store.getDeal("aquila", id);
+  assert.deepEqual([deal.title, deal.amount_cents, deal.probability, deal.expected_close_on, deal.type], ["Website v2", 250000, 60, null, "app"]);
+  assert.equal(await store.updateDeal("other", id, { title: "Hacked", amountCents: 1, probability: 1, expectedCloseOn: null, type: "app" }), false);
+  assert.equal((await store.getDeal("aquila", id)).title, "Website v2");
+});
+
+
+test("winning a deal makes the client and the project once, and marks the contact won", async () => {
+  const { query } = await import("../lib/db.js");
+  const lead = await seedVerifyLead("Deal Win Lead Verify16");
+  const id = await store.createDeal("aquila", lead, { title: "Big Site", amountCents: 480000, type: "app" });
+  await assert.rejects(store.winDeal("other", id), /Deal not found/, "another brand cannot win it");
+  assert.equal((await store.getDeal("aquila", id)).stage, "discovery");
+  const r = await store.winDeal("aquila", id, { userId: null });
+  assert.equal(r.won, true);
+  const deal = await store.getDeal("aquila", id);
+  assert.deepEqual([deal.stage, deal.probability, deal.project_id === r.projectId, !!deal.closed_at, deal.lead_stage], ["won", 100, true, true, "won"]);
+  const project = (await query("SELECT name, type, status, quoted_amount_cents, client_id FROM projects WHERE id = ?", [r.projectId]))[0];
+  assert.deepEqual([project.name, project.type, project.status, project.quoted_amount_cents, project.client_id], ["Big Site", "app", "in_progress", 480000, r.clientId], "the project carries the deal's name, type and amount");
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM clients WHERE lead_id = ?", [lead]))[0].n, 1);
+  assert.ok((await store.listActivities("aquila", lead)).some((a) => /Deal won: Big Site/.test(a.body)));
+  assert.deepEqual(await store.winDeal("aquila", id), { won: false, reason: "This deal is already won." }, "winning twice changes nothing");
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM projects WHERE client_id = ?", [r.clientId]))[0].n, 1, "no second project");
+  assert.equal(await store.reopenDeal("aquila", id), false, "a won deal cannot be reopened");
+  assert.deepEqual(await store.loseDeal("aquila", id, "price"), { lost: false });
+  // a contact that is already a client gets the new project on the same client
+  const second = await store.createDeal("aquila", lead, { title: "Maintenance", amountCents: 60000, type: "it_support" });
+  const r2 = await store.winDeal("aquila", second);
+  assert.equal(r2.clientId, r.clientId, "the same client");
+  assert.notEqual(r2.projectId, r.projectId);
+  // privacy: a won deal means financial records, so the contact cannot be deleted
+  const privacy = await import("../lib/privacy.js");
+  const exp = await privacy.contactExport("aquila", lead);
+  assert.deepEqual(exp.deals.map((x) => x.title).sort(), ["Big Site", "Maintenance"], "the export includes deals");
+  assert.equal((await privacy.deleteSummary("aquila", lead)).deals, 2);
+  assert.equal((await privacy.deleteContact({ brandId: "aquila", leadId: lead })).deleted, false);
+});
+
+test("losing a deal needs a reason, moves the contact only when nothing else is open, and can be reopened", async () => {
+  const lead = await seedVerifyLead("Deal Lose Lead Verify17");
+  const a = await store.createDeal("aquila", lead, { title: "A" });
+  const b = await store.createDeal("aquila", lead, { title: "B" });
+  await assert.rejects(store.loseDeal("aquila", a, ""), /reason/);
+  await assert.rejects(store.loseDeal("aquila", a, "because"), /reason/);
+  assert.equal((await store.getDeal("aquila", a)).stage, "discovery", "a refused loss changes nothing");
+  assert.deepEqual(await store.loseDeal("aquila", a, "price"), { lost: true });
+  let deal = await store.getDeal("aquila", a);
+  assert.deepEqual([deal.stage, deal.probability, deal.lost_reason, !!deal.closed_at], ["lost", 0, "price", true]);
+  assert.equal((await store.getLead("aquila", lead)).stage, "new", "another deal is still open, so the contact is not lost");
+  await store.loseDeal("aquila", b, "timing");
+  assert.equal((await store.getLead("aquila", lead)).stage, "lost", "no open deals left");
+  assert.deepEqual(await store.loseDeal("aquila", b, "timing"), { lost: false }, "losing twice does nothing");
+  assert.equal(await store.reopenDeal("other", a), false, "another brand cannot reopen it");
+  assert.equal(await store.reopenDeal("aquila", a), true);
+  deal = await store.getDeal("aquila", a);
+  assert.deepEqual([deal.stage, deal.probability, deal.lost_reason, deal.closed_at], ["discovery", 20, null, null]);
+  assert.equal(await store.updateDeal("aquila", b, { title: "B2", amountCents: null, probability: 10, expectedCloseOn: null, type: "website" }), false, "a lost deal cannot be edited");
+});
+
+test("deal lists, the overdue count, and the forecast rows stay inside the brand", async () => {
+  const lead = await seedVerifyLead("Deal List Lead Verify18");
+  const late = await store.createDeal("aquila", lead, { title: "Late One", amountCents: 1000, expectedCloseOn: "2020-01-01" });
+  const future = await store.createDeal("aquila", lead, { title: "Future One", amountCents: 2000, expectedCloseOn: "2099-01-01" });
+  const nodate = await store.createDeal("aquila", lead, { title: "No Date One" });
+  const open = (await store.listDeals("aquila", { status: "open" })).map((d) => d.id);
+  for (const id of [late, future, nodate]) assert.ok(open.includes(id));
+  assert.ok(open.indexOf(late) < open.indexOf(future) && open.indexOf(future) < open.indexOf(nodate), "soonest expected close first, no date last");
+  const mine = await store.listDeals("aquila", { leadId: lead });
+  assert.equal(mine.length, 3);
+  assert.ok(mine.every((d) => d.lead_name === "Deal List Lead Verify18"));
+  assert.deepEqual(await store.listDeals("other"), [], "another brand sees none");
+  assert.deepEqual(await store.dealsForForecast("other"), []);
+  assert.ok((await store.countOverdueDeals("aquila", "2026-11-05")) >= 1);
+  assert.equal(await store.countOverdueDeals("other", "2026-11-05"), 0);
+  await store.loseDeal("aquila", late, "other");
+  assert.ok(!(await store.listDeals("aquila", { status: "open" })).some((d) => d.id === late), "closed deals leave the open list");
+  assert.ok((await store.listDeals("aquila", { status: "lost" })).some((d) => d.id === late));
+  const rows = await store.dealsForForecast("aquila");
+  assert.ok(rows.length >= 3 && "stage" in rows[0] && "amount_cents" in rows[0] && "closed_at" in rows[0]);
+  const d = await import("../lib/deals.js");
+  assert.doesNotThrow(() => d.computeForecast(rows, { today: "2026-11-05" }), "real rows feed the forecast");
+  // a database rule backs the code: nothing outside the allowed values can be stored
+  const { query } = await import("../lib/db.js");
+  await assert.rejects(query("UPDATE deals SET stage = 'maybe' WHERE id = ?", [future]));
+  await assert.rejects(query("UPDATE deals SET probability = 101 WHERE id = ?", [future]));
+  await assert.rejects(query("UPDATE deals SET amount_cents = -5 WHERE id = ?", [future]));
+  await assert.rejects(query("UPDATE deals SET lost_reason = 'whim' WHERE id = ?", [future]));
+});
+
+test("the menu has Deals between Pipeline and Calendar, and overdue deals are a next step", async () => {
+  const nav = await import("../lib/nav.js");
+  assert.deepEqual(nav.NAV_GROUPS.find((g) => g.key === "follow").items.map((i) => i.label), ["Pipeline", "Deals", "Calendar"]);
+  const all = nav.NAV_GROUPS.flatMap((g) => g.items);
+  assert.deepEqual(all.filter((i) => nav.isActive(i, "/deals/12")).map((i) => i.label), ["Deals"]);
+  const n = await import("../lib/nextstep.js");
+  const base = { dueNow: 0, review: 0, approved: 0, lookups: 0, unscored: 0, dealsOverdue: 0, backupDue: false };
+  const steps = n.pickSteps({ ...base, dueNow: 1, dealsOverdue: 2, review: 3 });
+  assert.deepEqual(steps.map((s) => s.key), ["followups", "deals", "review"], "money waiting on a decision comes right after people waiting on you");
+  assert.equal(n.pickSteps({ ...base, dealsOverdue: 1 })[0].text, "1 deal is past the expected close date");
+  assert.equal(n.pickSteps({ ...base, dealsOverdue: 3 })[0].text, "3 deals are past the expected close date");
+  assert.equal(n.pickNext({ ...base, dealsOverdue: 3 }, "/deals").key, "scan", "not shown on the page that fixes it");
 });

@@ -101,6 +101,14 @@ First-time PayPal setup (sandbox, test money only):
 1. **Settings, Connections** (owners and admins): paste your Google Calendar appointment page link under **Booking link** and **Save link**.
 2. It then appears in new outreach drafts, on the public concept pages, and on each contact's page to paste into replies. (Drafts made earlier need **Regenerate from template**.)
 
+## 8a. Deals and the forecast
+
+1. When a contact could become paid work, open their page and press **Add a deal** (or **Deals, New deal**). Give it a name, the kind of work, an amount, an expected close date, and a stage. Leave **Chance to win** blank to use the usual figure for the stage (Discovery 20%, Proposal 50%, Negotiation 75%).
+2. **Deals** shows the **Open pipeline** (the full amounts), the **Forecast** (each amount times its chance, so $10,000 at 50% counts as $5,000), the **Won** total, and the **Win rate**. The chart places the forecast by expected close month. A deal with no date cannot be placed, and the page tells you how many.
+3. On the board, **Move to Proposal** or **Move to Negotiation** advances a deal. Moving to Proposal also marks the contact as Proposal sent.
+4. Open a deal to edit it, **Mark as won**, or **Mark as lost** (pick why). Winning makes the contact a client and creates a project for the deal's amount. A lost deal can be reopened.
+5. Keep expected dates honest. Anything past its date shows as overdue and appears under **Needs attention** on Today.
+
 ## 8b. Backups and privacy requests (owners and admins)
 
 1. **Back up your data.** Go to **Settings, Backups** and press **Back up now**. It saves one file with everything in Kestrel. Do it before any big change, and do **Check** on a backup now and then to prove it can be opened.

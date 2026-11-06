@@ -38,7 +38,7 @@ export default async function DeleteContact({ params, searchParams }) {
               <li>The contact: name, phone, email, notes, and address</li>
               <li>{sum.drafts} email draft(s)</li>
               <li>{sum.activities} timeline entr{sum.activities === 1 ? "y" : "ies"}</li>
-              <li>{sum.tasks} follow-up(s) and {sum.meetings} meeting(s)</li>
+              <li>{sum.tasks} follow-up(s), {sum.meetings} meeting(s), and {sum.deals} deal(s)</li>
               <li>Their concept page, which stops working</li>
             </ul>
           </section>

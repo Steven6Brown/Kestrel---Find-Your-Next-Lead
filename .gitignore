@@ -4,7 +4,6 @@ out/
 data/
 .env
 .env.*
-!.env.example
 *.log
 .vercel
 next-env.d.ts

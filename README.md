@@ -67,44 +67,12 @@ All screenshots use a fictional demo dataset. No real people or businesses appea
 - **Free to run.** OpenStreetMap, Overture Maps and the built-in audit cost nothing. Paid services (Google Places, AI writing help) are optional and off by default.
 - **Honest by design.** Concept pages say they are concepts, never copy a site, and mark anything unconfirmed as a placeholder.
 - **A human sends every email.** Drafts wait for review. There is no auto-send path.
-- **Local first.** Your data lives on your computer in an embedded Postgres (PGlite). Production can use any Postgres through `DATABASE_URL`.
-
-## Quick start
-
-Requires Node 20 or newer.
-
-```bash
-npm install
-cp .env.example .env.local   # fill in what you need; almost everything is optional locally
-npm run dev
-```
-
-Open http://localhost:3000. The first visit asks you to create the owner account. After that everything sits behind sign-in, with optional two-factor codes, roles and an audit log.
-
-```bash
-npm test        # unit tests
-npm run lint
-npm run build
-```
-
-### The settings that matter
-
-| Variable | What it is for |
-|---|---|
-| `OSM_CONTACT` | An email or URL that identifies you to OpenStreetMap (their policy requires it). |
-| `DATABASE_URL` | Postgres connection string. Leave blank locally to use embedded PGlite. |
-| `APP_BASE_URL` | Public https URL used in concept links and unsubscribe links. |
-| `RESEND_API_KEY`, `SENDER_*`, `MAILING_ADDRESS` | Needed before any real email is sent. Sending stays blocked without a mailing address. |
-| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | PayPal invoicing, sandbox first. Live money stays blocked until you opt in. |
-| `BACKUP_DIR`, `BACKUP_PASSPHRASE` | Where backups go and the passphrase that encrypts them. |
-
-Every variable is explained in [.env.example](.env.example).
+- **Local first.** Your data lives on your computer in an embedded Postgres (PGlite).
 
 ## Documentation
 
 | Read | For |
 |---|---|
-| [GUIDE.md](GUIDE.md) | Step by step: starting, testing and using every feature. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How it is built and why. |
 | [SECURITY.md](SECURITY.md) | Sign-in, sessions, two-factor and the audit log. |
 | [PRIVACY.md](PRIVACY.md) | What is stored, export and delete, and what is kept after a deletion. |

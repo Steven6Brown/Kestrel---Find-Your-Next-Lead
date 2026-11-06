@@ -1,3 +1,4 @@
+import { useId } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { product } from "@/config/product";
@@ -27,8 +28,13 @@ function SideLockup({ brand }) {
 
 /** Navigation, theme switch, and the signed in person, used in the sidebar and in the phone menu. */
 function SideBody({ user, theme }) {
+  const uid = useId();
   return (
     <>
+      <form action="/search" method="get" role="search" className="mb-4 px-1">
+        <label htmlFor={`${uid}-q`} className="sr-only">Search contacts, clients, and deals</label>
+        <input id={`${uid}-q`} name="q" type="search" maxLength={80} autoComplete="off" placeholder="Search" className="min-h-[44px] w-full rounded-lg border border-side-line bg-side-active px-3 text-[0.95rem] text-white placeholder:text-side-muted" />
+      </form>
       <div className="flex-1"><NavLinks /></div>
       <div className="mt-6 border-t border-side-line pt-3">
         <ThemeToggle initial={theme} tone="side" />

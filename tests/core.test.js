@@ -1959,9 +1959,9 @@ test("next step counts come from real data and stay inside the brand", async () 
 test("the Prospects tabs map filters to exactly one highlighted tab", async () => {
   const { PROSPECT_TABS, tabFor } = await import("../lib/prospecttabs.js");
   const lf = await import("../lib/leadfilters.js");
-  assert.deepEqual(PROSPECT_TABS.map((t) => t.key), ["all", "none", "social", "has", "redesign", "closed"]);
-  assert.equal(new Set(PROSPECT_TABS.map((t) => t.href)).size, 6);
-  for (const tab of PROSPECT_TABS.filter((t) => t.href.startsWith("/leads"))) {
+  assert.deepEqual(PROSPECT_TABS.map((t) => t.key), ["all", "none", "social", "has", "redesign", "closed", "duplicates"]);
+  assert.equal(new Set(PROSPECT_TABS.map((t) => t.href)).size, 7);
+  for (const tab of PROSPECT_TABS.filter((t) => t.href === "/leads" || t.href.startsWith("/leads?"))) {
     const q = Object.fromEntries(new URLSearchParams(tab.href.split("?")[1] || ""));
     assert.equal(tabFor(lf.parseFilters(q)), tab.key, tab.label);
   }
@@ -2698,4 +2698,506 @@ test("the menu has Deals between Pipeline and Calendar, and overdue deals are a 
   assert.equal(n.pickSteps({ ...base, dealsOverdue: 1 })[0].text, "1 deal is past the expected close date");
   assert.equal(n.pickSteps({ ...base, dealsOverdue: 3 })[0].text, "3 deals are past the expected close date");
   assert.equal(n.pickNext({ ...base, dealsOverdue: 3 }, "/deals").key, "scan", "not shown on the page that fixes it");
+});
+
+// ---------------- duplicates and merging ----------------
+
+const dl = (id, o = {}) => ({ id, name: "", city: "", phone: "", contact_email: "", website: "", lat: null, lon: null, stage: "new", has_client: false, ...o });
+
+test("duplicates: only the same business is flagged, never a different place or a chain", async () => {
+  const d = await import("../lib/dupes.js");
+  const leads = [
+    dl(1, { name: "Citizen Pie", city: "Cleveland", phone: "(216) 555-0100", website: "https://citizenpie.com/", lat: 41.48, lon: -81.7 }),
+    dl(2, { name: "Citizen Pie", city: "Cleveland", lat: 41.4801, lon: -81.7001 }),
+    dl(3, { name: "Citizen Pie", city: "Akron", lat: 41.08, lon: -81.52 }),
+    dl(4, { name: "Starbucks", city: "Cleveland", lat: 41.5, lon: -81.69 }),
+    dl(5, { name: "Starbucks", city: "Cleveland", lat: 41.51, lon: -81.68 }),
+    dl(6, { name: "Joe's Barber Shop", phone: "330-555-0111" }),
+    dl(7, { name: "Joe's Barber", phone: "(330) 555-0111" }),
+    dl(8, { name: "Rosa Nails", contact_email: "rosa@nails.example" }),
+    dl(9, { name: "Rosa Nails Studio", contact_email: "ROSA@nails.example" }),
+    dl(10, { name: "Blue Door Cafe", website: "https://www.bluedoor.example/menu" }),
+    dl(11, { name: "The Blue Door", website: "http://bluedoor.example" }),
+    dl(12, { name: "Great Clips Akron", city: "Akron", phone: "800-555-0000" }),
+    dl(13, { name: "Great Clips Canton", city: "Canton", phone: "800-555-0000" }),
+    dl(14, { name: "Cafe X", website: "https://facebook.com/cafex" }),
+    dl(15, { name: "Cafe X Two", website: "https://facebook.com/cafex" }),
+  ];
+  const groups = d.findDuplicateGroups(leads);
+  assert.deepEqual(groups.map((g) => g.ids), [[1, 2], [6, 7], [8, 9], [10, 11]]);
+  assert.deepEqual(groups.map((g) => g.reasons), [["Same name in the same place"], ["Same phone number"], ["Same email address"], ["Same website"]]);
+  const by = (a, b) => d.duplicateReason(leads.find((l) => l.id === a), leads.find((l) => l.id === b));
+  assert.equal(by(1, 3), null, "same name, different city and far apart");
+  assert.equal(by(4, 5), null, "two shops of a chain a kilometre apart");
+  assert.equal(by(12, 13), null, "a shared corporate phone line, different cities");
+  assert.equal(by(14, 15), null, "a shared social page says nothing about the business");
+  assert.equal(by(1, 1), null, "a contact is not its own duplicate");
+  assert.equal(by(1, 999), null);
+  assert.equal(d.duplicateReason(null, leads[0]), null);
+  // a shared phone with an unrelated name is a shared line, not a duplicate
+  assert.equal(d.duplicateReason(dl(1, { name: "Alpha Plumbing", phone: "216-555-0100" }), dl(2, { name: "Zed Bakery", phone: "216-555-0100" })), null);
+  assert.equal(d.duplicateReason(dl(1, { name: "Alpha Plumbing", contact_email: "a@x.example" }), dl(2, { name: "Zed Bakery", contact_email: "a@x.example" })), null, "same for a shared email");
+  // an entry with no coordinates can still match one that has them
+  assert.equal(d.duplicateReason(dl(1, { name: "Pie Shop", lat: 41.5, lon: -81.5 }), dl(2, { name: "Pie Shop" })), "Same name in the same place");
+  // dismissed pairs disappear, and a dismissal does not hide other pairs
+  assert.deepEqual(d.findDuplicateGroups(leads, new Set(["1:2"])).map((g) => g.ids), [[6, 7], [8, 9], [10, 11]]);
+  assert.equal(d.pairKey(5, 2), "2:5");
+});
+
+test("duplicates: a chain of matches becomes one group, and survivors are chosen sensibly", async () => {
+  const d = await import("../lib/dupes.js");
+  const chain = [
+    dl(20, { name: "Mia Cafe", phone: "330-555-0222" }),
+    dl(21, { name: "Mia Cafe Bistro", phone: "(330) 555-0222", contact_email: "mia@x.example" }),
+    dl(22, { name: "Mia Cafe Bistro", contact_email: "mia@x.example" }),
+    dl(30, { name: "Unrelated Garage" }),
+  ];
+  const g = d.findDuplicateGroups(chain);
+  assert.equal(g.length, 1);
+  assert.deepEqual(g[0].ids, [20, 21, 22], "A matches B and B matches C, so all three are one business");
+  assert.deepEqual(g[0].reasons, ["Same phone number", "Same email address"]);
+  assert.equal(d.pickSurvivor([dl(5), dl(3, { stage: "replied" }), dl(9, { has_client: true })]).id, 9, "a client is always kept");
+  assert.equal(d.pickSurvivor([dl(5), dl(3, { stage: "replied" }), dl(9)]).id, 3, "then the furthest along");
+  assert.equal(d.pickSurvivor([dl(5), dl(3), dl(9)]).id, 3, "then the oldest");
+  assert.equal(d.pickSurvivor([dl(5, { contact_email: "a@x.example" }), dl(3)]).id, 5, "an email address breaks a tie");
+  assert.equal(d.stageRank("won"), 5);
+  assert.equal(d.stageRank("lost"), 0);
+  assert.equal(d.stageRank("nonsense"), 0);
+  // a huge identical bucket is a chain or a data glitch, so it is not offered
+  const crowd = Array.from({ length: 61 }, (_, i) => dl(100 + i, { name: "Same Name", city: "Ohio" }));
+  assert.deepEqual(d.findDuplicateGroups(crowd), []);
+  assert.equal(d.findDuplicateGroups(crowd.slice(0, 60)).length, 1, "sixty is still reviewable");
+  // it stays fast on a big list
+  const many = Array.from({ length: 4000 }, (_, i) => dl(1000 + i, { name: `Business Number ${i} Of Many`, city: `City ${i % 40}`, phone: `216555${String(i).padStart(4, "0")}` }));
+  const t0 = Date.now();
+  assert.deepEqual(d.findDuplicateGroups(many), []);
+  assert.ok(Date.now() - t0 < 2000, "4,000 contacts in well under two seconds");
+});
+
+async function twin(name, extra = {}) {
+  const r = await store.upsertPlace("aquila", { place_id: "osm:node/" + name.replace(/\W/g, "") + Math.random().toString(36).slice(2, 7), name, category: "bakery", category_label: "Bakery", address: "", city: "Mergeton", region: "MT", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website", ...extra }, "shops in Mergeton, MT");
+  return r.id;
+}
+
+test("merging moves everything to the contact you keep, fills blanks, and never loses a thing", async () => {
+  const { query } = await import("../lib/db.js");
+  const keep = await twin("Merge Bakery Alpha");
+  const drop = await twin("Merge Bakery Alpha");
+  const dropPlace = (await store.getLead("aquila", drop)).place_id;
+  await store.updateLeadContact("aquila", keep, { contact_email: "", notes: "A note", status: "new" });
+  await store.updateLeadContact("aquila", drop, { contact_email: "b@merge.example", notes: "B note", status: "contacted" });
+  await store.setStage("aquila", drop, "replied");
+  await store.addActivity("aquila", drop, { kind: "note", body: "call from B" });
+  await store.addTask("aquila", drop, { title: "B task", dueOn: "2026-12-01" });
+  await store.createMeeting("aquila", { leadId: drop, title: "B meeting", location: "phone", startsAt: new Date(2026, 11, 3, 10).toISOString() });
+  const deal = await store.createDeal("aquila", drop, { title: "B deal", amountCents: 5000 });
+  await store.saveDraft("aquila", keep, { subject: "keep draft", body: "x" });
+  await store.saveDraft("aquila", drop, { subject: "drop draft", body: "y" });
+  await query("UPDATE drafts SET status = 'sent', sent_at = ? WHERE lead_id = ?", [new Date().toISOString(), drop]);
+  assert.deepEqual(await store.mergeLeads("aquila", keep, keep), { merged: false, reason: "Choose two different contacts." });
+  assert.equal((await store.mergeLeads("other", keep, drop)).merged, false, "another brand cannot merge them");
+  assert.ok(await store.getLead("aquila", drop), "a refused merge changes nothing");
+
+  assert.deepEqual(await store.mergeLeads("aquila", keep, drop), { merged: true });
+  assert.equal(await store.getLead("aquila", drop), null, "the duplicate is gone");
+  const k = await store.getLead("aquila", keep);
+  assert.equal(k.contact_email, "b@merge.example", "a blank is filled from the other contact");
+  assert.equal(k.notes, "A note\n\nB note", "notes are joined, not replaced");
+  assert.equal(k.stage, "meeting_booked", "the furthest stage wins (scheduling the meeting had already moved the duplicate past Replied)");
+  assert.equal(k.status, "contacted");
+  const acts = await store.listActivities("aquila", keep);
+  assert.ok(acts.some((a) => a.body === "call from B"), "the timeline moved");
+  assert.ok(acts.some((a) => /Merged with a duplicate: Merge Bakery Alpha/.test(a.body)), "and the merge is recorded");
+  assert.equal((await store.tasksForLead("aquila", keep)).filter((t) => t.title === "B task").length, 1);
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM meetings WHERE lead_id = ? AND title = 'B meeting'", [keep]))[0].n, 1);
+  assert.equal((await store.getDeal("aquila", deal)).lead_id, keep, "deals move too");
+  const draft = await store.getDraftByLead("aquila", keep);
+  assert.deepEqual([draft.subject, draft.status], ["drop draft", "sent"], "a draft that was sent is never lost to an unsent one");
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM drafts WHERE lead_id = ?", [keep]))[0].n, 1);
+  // the scan finds the merged business again and treats it as the contact you kept
+  const before = (await query("SELECT COUNT(*)::int AS n FROM leads WHERE brand_id = 'aquila'"))[0].n;
+  const again = await store.upsertPlace("aquila", { place_id: dropPlace, name: "Merge Bakery Alpha", category: "bakery", category_label: "Bakery", address: "", city: "Mergeton", region: "MT", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website" }, "x");
+  assert.deepEqual(again, { created: false, id: keep, aliased: true });
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM leads WHERE brand_id = 'aquila'"))[0].n, before, "no duplicate comes back");
+});
+
+test("merge rules: do not contact wins, a website is kept, clients are protected, and merges can chain", async () => {
+  const { query } = await import("../lib/db.js");
+  // do not contact wins, and a real website found on the other copy is kept
+  const a = await twin("Merge Rules Beta");
+  const b = await twin("Merge Rules Beta", { website: "https://beta.example/", website_kind: "site", bucket: "has_website" });
+  await store.setLeadStatus("aquila", b, "do_not_contact");
+  await store.mergeLeads("aquila", a, b);
+  const m = await store.getLead("aquila", a);
+  assert.equal(m.status, "do_not_contact", "someone who said no stays no");
+  assert.deepEqual([m.website, m.bucket], ["https://beta.example/", "has_website"]);
+  // closed: reopened if either copy is open, closed only if both are
+  const c1 = await twin("Merge Rules Gamma");
+  const c2 = await twin("Merge Rules Gamma");
+  await store.setClosed("aquila", c1, true);
+  await store.mergeLeads("aquila", c1, c2);
+  assert.equal((await store.getLead("aquila", c1)).closed_at, null, "one open copy keeps the business open");
+  const c3 = await twin("Merge Rules Delta");
+  const c4 = await twin("Merge Rules Delta");
+  await store.setClosed("aquila", c3, true);
+  await store.setClosed("aquila", c4, true);
+  await store.mergeLeads("aquila", c3, c4);
+  assert.ok((await store.getLead("aquila", c3)).closed_at, "both closed stays closed");
+  // clients: two clients cannot merge; one client moves to the kept contact
+  const k1 = await twin("Merge Rules Epsilon");
+  const k2 = await twin("Merge Rules Epsilon");
+  await store.convertToClient("aquila", k1);
+  await store.convertToClient("aquila", k2);
+  const refused = await store.mergeLeads("aquila", k1, k2);
+  assert.equal(refused.merged, false);
+  assert.match(refused.reason, /Both of these are clients/);
+  assert.ok(await store.getLead("aquila", k2), "nothing changed");
+  const k3 = await twin("Merge Rules Zeta");
+  const k4 = await twin("Merge Rules Zeta");
+  const cl = await store.convertToClient("aquila", k4);
+  assert.equal((await store.mergeLeads("aquila", k3, k4)).merged, true);
+  assert.equal((await query("SELECT lead_id FROM clients WHERE id = ?", [cl.id]))[0].lead_id, k3, "the client now belongs to the contact you kept");
+  // chains: X into Y, then Y into Z: X's map id now points at Z
+  const x = await twin("Merge Rules Chain");
+  const y = await twin("Merge Rules Chain");
+  const z = await twin("Merge Rules Chain");
+  const xPlace = (await store.getLead("aquila", x)).place_id;
+  await store.mergeLeads("aquila", y, x);
+  await store.mergeLeads("aquila", z, y);
+  assert.equal((await query("SELECT lead_id FROM lead_aliases WHERE place_id = ?", [xPlace]))[0].lead_id, z);
+  assert.equal((await store.mergeLeads("aquila", z, 99999999)).merged, false, "a contact that does not exist");
+});
+
+test("duplicate groups come from real contacts, dismissals stick, and deleting the survivor remembers merged places", async () => {
+  const privacy = await import("../lib/privacy.js");
+  const p = await twin("Group Bakery Omega");
+  const q = await twin("Group Bakery Omega");
+  const groups = await store.duplicateGroups("aquila");
+  const g = groups.find((x) => x.ids.includes(p));
+  assert.ok(g && g.ids.includes(q), "the two copies are offered together");
+  assert.ok(g.reasons.includes("Same name in the same place"));
+  assert.equal(g.members.length, g.ids.length);
+  assert.ok(g.ids.includes(g.keep), "one is suggested to keep");
+  assert.deepEqual(await store.duplicateGroups("nobody"), []);
+  await store.dismissDuplicates("other", [p, q]);
+  assert.ok((await store.duplicateGroups("aquila")).some((x) => x.ids.includes(p)), "another brand cannot dismiss them");
+  await store.dismissDuplicates("aquila", [q, p, p]);
+  assert.ok(!(await store.duplicateGroups("aquila")).some((x) => x.ids.includes(p)), "dismissed pairs are not offered again");
+  // privacy: deleting a contact that had others merged into it must not let a scan recreate those
+  const s1 = await twin("Group Delete Sigma");
+  const s2 = await twin("Group Delete Sigma");
+  const s2Place = (await store.getLead("aquila", s2)).place_id;
+  await store.mergeLeads("aquila", s1, s2);
+  assert.deepEqual(await privacy.deleteContact({ brandId: "aquila", leadId: s1 }), { deleted: true });
+  const back = await store.upsertPlace("aquila", { place_id: s2Place, name: "Group Delete Sigma", category: "bakery", category_label: "Bakery", address: "", city: "Mergeton", region: "MT", phone: "", website: "", website_kind: "none", maps_url: "", bucket: "no_website" }, "x");
+  assert.deepEqual(back, { created: false, id: null, skipped: true }, "the deleted business stays deleted, including the copy that was merged in");
+});
+
+// ---------------- tags, CSV import, saved views ----------------
+
+test("tags are cleaned to a safe, short, lowercase form", async () => {
+  const t = await import("../lib/tags.js");
+  assert.equal(t.normalizeTag("  Coffee Shop "), "coffee shop");
+  assert.equal(t.normalizeTag("Met @ Expo!!"), "met expo");
+  assert.equal(t.normalizeTag("follow_up in spring"), "follow up in spring");
+  assert.equal(t.normalizeTag("--x--"), "x");
+  assert.equal(t.normalizeTag("a--b"), "a-b");
+  assert.equal(t.normalizeTag("Café"), "caf", "only a to z and digits survive");
+  assert.equal(t.normalizeTag("<script>alert(1)</script>"), "scriptalert1script", "markup is reduced to plain letters");
+  for (const none of ["", "   ", null, undefined, "!!!", "x".repeat(31)]) assert.equal(t.normalizeTag(none), "");
+  assert.equal(t.normalizeTag("x".repeat(30)), "x".repeat(30));
+  assert.equal(t.normalizeTag(12345), "12345");
+  assert.deepEqual(t.parseTagList("a, b; A\nc|d", 3), ["a", "b", "c"], "split on commas, semicolons, lines and bars; no repeats; limited");
+  assert.deepEqual(t.parseTagList(",, ,;"), []);
+  assert.deepEqual(t.parseTagList(null), []);
+  assert.equal(t.MAX_TAGS_PER_CONTACT, 20);
+});
+
+test("CSV parsing handles quotes, commas, line breaks, and odd files without losing data", async () => {
+  const c = await import("../lib/csvimport.js");
+  assert.deepEqual(c.parseCsv("name,city\r\nJoe,Akron\r\n"), [["name", "city"], ["Joe", "Akron"]]);
+  assert.deepEqual(c.parseCsv("name,notes\n\"Smith, Jo\",\"said \"\"hi\"\"\nthen left\"\n"), [["name", "notes"], ["Smith, Jo", "said \"hi\"\nthen left"]]);
+  assert.deepEqual(c.parseCsv("﻿a,b\n1,2"), [["a", "b"], ["1", "2"]], "a byte order mark and a missing final newline");
+  assert.deepEqual(c.parseCsv("a,b\n\n,\n1,2\n\n"), [["a", "b"], ["1", "2"]], "blank and empty rows are dropped");
+  assert.deepEqual(c.parseCsv("a,b,c\n1,,3"), [["a", "b", "c"], ["1", "", "3"]], "empty fields stay in place");
+  assert.deepEqual(c.parseCsv("a\r1\r2"), [["a"], ["1"], ["2"]], "old Mac line endings");
+  assert.doesNotThrow(() => c.parseCsv("a,b\n\"never closed,1"), "an unterminated quote reads to the end");
+  assert.deepEqual(c.parseCsv(""), []);
+  assert.deepEqual(c.mapHeaders(["Business Name", "E-mail", "Phone Number", "Web Site", "ST", " TAGS ", "Extra"]), { name: 0, email: 1, phone: 2, website: 3, region: 4, tags: 5 });
+  assert.deepEqual(c.mapHeaders(["company", "company name"]), { name: 0 }, "the first matching column wins");
+  assert.deepEqual(c.mapHeaders(["foo"]), {});
+});
+
+test("CSV import analysis: every row is checked and duplicates are found, never added twice", async () => {
+  const c = await import("../lib/csvimport.js");
+  const existing = [{ id: 1, name: "Citizen Pie", city: "Cleveland", phone: "(216) 555-0100", contact_email: "", website: "https://citizenpie.com/", lat: null, lon: null }];
+  const text = [
+    "Business,Email,Phone,Website,City,State,Category,Notes,Tags",
+    "Citizen Pie,,,,Cleveland,OH,Pizza,,",
+    'New Bakery,NEW@bakery.example,330-555-0111,bakery.example,Akron,OH,Bakery,"likes mornings\nand tea","coffee, Met at Expo"',
+    ",x@y.example,,,,,,,",
+    "Bad Email Co,not-an-email,,,,,,,",
+    'Bad Site Co,,,"not a url with spaces",,,,,',
+    "New Bakery,other@x.example,(330) 555-0111,,Akron,OH,,,",
+    "Phone Twin,,216-555-0100,,Cleveland,,,,",
+  ].join("\n");
+  const r = c.analyzeCsv(text, existing);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.counts, { total: 7, new: 2, duplicate: 2, invalid: 3 });
+  const row = (n) => r.rows.find((x) => x.line === n);
+  assert.equal(row(2).status, "duplicate");
+  assert.match(row(2).reason, /Same name in the same place: Citizen Pie/);
+  assert.deepEqual([row(3).status, row(3).email, row(3).website, row(3).tags], ["new", "new@bakery.example", "https://bakery.example/", ["coffee", "met at expo"]], "email lowercased, website completed, tags cleaned");
+  assert.equal(row(3).notes, "likes mornings\nand tea", "a note with a line break survives");
+  assert.deepEqual([row(4).status, row(4).reason], ["invalid", "No name."]);
+  assert.deepEqual([row(5).status, row(5).reason], ["invalid", "The email address is not valid."]);
+  assert.deepEqual([row(6).status, row(6).reason], ["invalid", "The website is not a valid address."]);
+  assert.equal(row(7).status, "duplicate");
+  assert.match(row(7).reason, /earlier in this file/, "the same business twice in one file");
+  assert.equal(row(8).status, "new", "a shared phone with an unrelated name is not a duplicate");
+  assert.deepEqual(r.columns.sort(), ["address", "category", "city", "email", "name", "notes", "phone", "region", "tags", "website"].filter((k) => k !== "address").sort());
+  // files that cannot be used at all
+  assert.match(c.analyzeCsv("name\n", []).error, /header row and at least one contact/);
+  assert.match(c.analyzeCsv("", []).error, /header row/);
+  assert.match(c.analyzeCsv("Foo,Bar\n1,2", []).error, /Name.*Found: Foo, Bar/);
+  assert.match(c.analyzeCsv("name\na\nb\nc", [], { maxRows: 2 }).error, /3 rows.*limit is 2/);
+  assert.match(c.analyzeCsv("name\n" + "x".repeat(c.MAX_CHARS), []).error, /too large/);
+  // text that looks like a spreadsheet formula is only ever stored as text
+  const f = c.analyzeCsv("name\n=HYPERLINK(\"http://evil\")", []);
+  assert.equal(f.rows[0].name, "=HYPERLINK(\"http://evil\")");
+  assert.equal(c.categorySlug("Hair & Beauty!"), "hair_beauty");
+});
+
+test("tags on contacts: add, remove, limits, filters, brand isolation, and a database rule behind them", async () => {
+  const { query } = await import("../lib/db.js");
+  const lf = await import("../lib/leadfilters.js");
+  const lead = await seedVerifyLead("Tag Lead Verify19");
+  assert.equal(await store.addTags("aquila", lead, ["Coffee Shop", "coffee shop", "Met at Expo", "!!!", ""]), 2, "cleaned, deduplicated, empty ones dropped");
+  assert.deepEqual(await store.tagsForLead("aquila", lead), ["coffee shop", "met at expo"]);
+  assert.equal(await store.addTags("other", lead, ["stolen"]), 0, "another brand cannot tag it");
+  assert.equal(await store.addTags("aquila", 99999999, ["ghost"]), 0);
+  assert.equal(await store.addTags("aquila", lead, ["coffee shop"]), 0, "already there");
+  const many = await seedVerifyLead("Tag Limit Lead Verify19");
+  assert.equal(await store.addTags("aquila", many, Array.from({ length: 25 }, (_, i) => `tag ${i}`)), 20, "twenty at most");
+  assert.equal((await store.tagsForLead("aquila", many)).length, 20);
+  const counts = await store.tagCounts("aquila");
+  assert.ok(counts.find((x) => x.tag === "coffee shop").n >= 1);
+  assert.deepEqual(await store.tagCounts("nobody"), []);
+  const f = lf.parseFilters({ tag: "Coffee Shop", site: "any" });
+  assert.equal(f.tag, "coffee shop");
+  assert.ok((await store.searchLeads("aquila", f, { limit: 5000 })).some((l) => l.id === lead), "the filter finds tagged contacts");
+  assert.ok(!(await store.searchLeads("aquila", lf.parseFilters({ tag: "met at expo", site: "any" }), { limit: 5000 })).some((l) => l.id === many));
+  assert.equal(lf.hrefWith("/leads", lf.parseFilters({ tag: "coffee shop" }), {}), "/leads?tag=coffee+shop");
+  assert.equal(lf.parseFilters({ tag: "<b>x</b>" }).tag, "bxb", "junk in the address is reduced to letters");
+  assert.equal(lf.parseFilters({}).tag, "");
+  await store.removeTag("other", lead, "coffee shop");
+  assert.ok((await store.tagsForLead("aquila", lead)).includes("coffee shop"), "another brand cannot remove it");
+  await store.removeTag("aquila", lead, "Coffee Shop");
+  assert.deepEqual(await store.tagsForLead("aquila", lead), ["met at expo"]);
+  await store.setClosed("aquila", lead, true);
+  assert.ok(!(await store.tagCounts("aquila")).some((x) => x.tag === "met at expo" && x.n === 0), "closed contacts are not counted");
+  await store.setClosed("aquila", lead, false);
+  await assert.rejects(query("INSERT INTO lead_tags (brand_id, lead_id, tag, created_at) VALUES ('aquila', ?, 'Bad Tag!', 'x')", [lead]), "the database refuses a malformed tag too");
+});
+
+test("saved views keep only safe Prospects addresses, with limits", async () => {
+  assert.deepEqual(await store.saveView("aquila", "  Akron   cafes ", "/leads?site=none&city=Akron&category=cafe", null), { saved: true });
+  assert.deepEqual(await store.saveView("aquila", "Akron cafes", "/leads", null), { saved: false, reason: "A view with that name already exists." });
+  for (const href of ["/redesign", "http://evil.example/", "//evil.example", "/leads?x=<script>", "/leads/12", "/leads?a=b c"]) {
+    assert.equal((await store.saveView("aquila", "Bad " + href.length, href)).saved, false, href);
+  }
+  assert.equal((await store.saveView("aquila", "", "/leads")).saved, false);
+  assert.equal((await store.saveView("aquila", "x".repeat(41), "/leads")).saved, false);
+  const views = await store.listViews("aquila");
+  assert.deepEqual(views.map((v) => v.name), ["Akron cafes"], "names are tidied");
+  assert.deepEqual(await store.listViews("other"), []);
+  await store.deleteView("other", views[0].id);
+  assert.equal((await store.listViews("aquila")).length, 1, "another brand cannot delete it");
+  for (let i = 0; i < 19; i++) assert.equal((await store.saveView("aquila", "View " + i, "/leads?site=any")).saved, true);
+  assert.match((await store.saveView("aquila", "One too many", "/leads")).reason, /20 saved views/);
+  await store.deleteView("aquila", views[0].id);
+  assert.equal((await store.listViews("aquila")).length, 19);
+  for (const v of await store.listViews("aquila")) await store.deleteView("aquila", v.id);
+});
+
+test("an import creates the contacts, and importing the same file again adds nothing", async () => {
+  const c = await import("../lib/csvimport.js");
+  const { query } = await import("../lib/db.js");
+  const text = [
+    "Name,Email,Phone,Website,City,State,Category,Notes,Tags",
+    "Csv Import Bakery One,one@csvimport.example,330-555-0301,csvbakery1.example,Importville,IM,Hair & Beauty,first note,vip",
+    "Csv Import Bakery Two,,330-555-0302,,Importville,IM,,,",
+  ].join("\n");
+  const a = c.analyzeCsv(text, await store.importComparisonLeads("aquila"));
+  assert.deepEqual(a.counts, { total: 2, new: 2, duplicate: 0, invalid: 0 });
+  await assert.rejects(store.importContacts("aquila", a.rows, { source: "kestrel" }), /where these contacts came from/, "only a hand-entered source is allowed");
+  const ids = await store.importContacts("aquila", a.rows.filter((r) => r.status === "new"), { source: "referral", tagAll: ["imported"], userId: null });
+  assert.equal(ids.length, 2);
+  const one = await store.getLead("aquila", ids[0]);
+  assert.deepEqual([one.name, one.contact_email, one.phone, one.city, one.region, one.source, one.owner_notes], ["Csv Import Bakery One", "one@csvimport.example", "330-555-0301", "Importville", "IM", "referral", "first note"]);
+  assert.deepEqual([one.bucket, one.website, one.website_kind, one.category, one.category_label], ["has_website", "https://csvbakery1.example/", "site", "hair_beauty", "Hair & Beauty"], "a real website means it can be quality checked");
+  const two = await store.getLead("aquila", ids[1]);
+  assert.deepEqual([two.bucket, two.website, two.status, two.stage], ["unknown", null, "new", "new"]);
+  assert.equal(one.place_id, null, "typed or imported contacts have no map id");
+  assert.deepEqual(await store.tagsForLead("aquila", ids[0]), ["imported", "vip"], "the tag for everyone plus the row's own");
+  assert.deepEqual(await store.tagsForLead("aquila", ids[1]), ["imported"]);
+  assert.ok((await store.listActivities("aquila", ids[0])).some((x) => /Imported from a CSV file \(Referral\)/.test(x.body)));
+  const again = c.analyzeCsv(text, await store.importComparisonLeads("aquila"));
+  assert.deepEqual(again.counts, { total: 2, new: 0, duplicate: 2, invalid: 0 }, "the same file is now all duplicates");
+  // a closed business is still known, so it is not added again either
+  await store.setClosed("aquila", ids[1], true);
+  assert.equal(c.analyzeCsv(text, await store.importComparisonLeads("aquila")).counts.duplicate, 2);
+  // the parked file: brand scoped, and old ones are cleared
+  const batch = await store.createImportBatch("aquila", { userId: null, source: "manual", tagAll: "x", csv: text });
+  assert.equal((await store.getImportBatch("aquila", batch)).csv, text);
+  assert.equal(await store.getImportBatch("other", batch), null);
+  await query("UPDATE import_batches SET created_at = '2020-01-01T00:00:00.000Z' WHERE id = ?", [batch]);
+  const fresh = await store.createImportBatch("aquila", { userId: null, source: "manual", csv: "name\nx" });
+  assert.equal(await store.getImportBatch("aquila", batch), null, "a batch older than a day is cleared");
+  await store.deleteImportBatch("other", fresh);
+  assert.ok(await store.getImportBatch("aquila", fresh), "another brand cannot delete it");
+  await store.deleteImportBatch("aquila", fresh);
+  assert.equal(await store.getImportBatch("aquila", fresh), null);
+});
+
+test("backups leave out the short lived import files, and deleting a contact removes its tags", async () => {
+  const b = await import("../lib/backup.js");
+  assert.ok(b.EXCLUDED_TABLES.includes("import_batches"));
+  const fake = async (sql) => {
+    if (/information_schema\.tables/.test(sql)) return [{ table_name: "leads" }, { table_name: "import_batches" }, { table_name: "lead_tags" }];
+    if (/pg_constraint/.test(sql)) return [];
+    if (/information_schema\.columns/.test(sql)) return [{ column_name: "id" }];
+    return [];
+  };
+  assert.deepEqual((await b.dumpDatabase(fake)).manifest.order, ["lead_tags", "leads"]);
+  const privacy = await import("../lib/privacy.js");
+  const { query } = await import("../lib/db.js");
+  const lead = await seedVerifyLead("Tag Delete Lead Verify20");
+  await store.addTags("aquila", lead, ["gone soon"]);
+  assert.deepEqual(await privacy.deleteContact({ brandId: "aquila", leadId: lead }), { deleted: true });
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM lead_tags WHERE lead_id = ?", [lead]))[0].n, 0);
+});
+
+// ---------------- bulk actions and search ----------------
+
+test("bulk actions: only safe actions, only reasonable sizes, and every input is checked", async () => {
+  const b = await import("../lib/bulk.js");
+  assert.deepEqual(b.BULK_STAGES.map(([k]) => k), ["new", "contacted", "replied", "meeting_booked", "proposal_sent", "lost"], "won and not interested are not bulk actions");
+  assert.equal(b.parseBulk({ ids: [], action: "skip" }).error, "Tick at least one contact first.");
+  assert.equal(b.parseBulk({ action: "skip" }).ok, false);
+  assert.deepEqual(b.parseBulk({ ids: ["a", "-1", "0", "3", "3", "4.5", 7], action: "close" }).value.ids, [3, 7], "junk and repeats are dropped");
+  assert.equal(b.parseBulk({ ids: Array.from({ length: 200 }, (_, i) => i + 1), action: "skip" }).ok, true);
+  assert.equal(b.parseBulk({ ids: Array.from({ length: 201 }, (_, i) => i + 1), action: "skip" }).error, "That is 201 contacts. Do 200 or fewer at a time.");
+  assert.equal(b.parseBulk({ ids: [1], action: "" }).error, "Choose what to do with them.");
+  assert.equal(b.parseBulk({ ids: [1], action: "delete" }).ok, false, "delete is not a bulk action");
+  assert.equal(b.parseBulk({ ids: [1], action: "tag", tag: "" }).error, "Type the tag to add.");
+  assert.deepEqual(b.parseBulk({ ids: [1], action: "tag", tag: "Coffee, VIP" }).value.tags, ["coffee", "vip"]);
+  assert.equal(b.parseBulk({ ids: [1], action: "tag", tag: "a,b,c,d,e,f,g" }).value.tags.length, 5, "five tags at most at once");
+  for (const stage of ["won", "not_interested", "bogus", ""]) assert.equal(b.parseBulk({ ids: [1], action: "stage", stage }).ok, false, stage);
+  for (const stage of ["new", "contacted", "lost"]) assert.equal(b.parseBulk({ ids: [1], action: "stage", stage }).value.stage, stage);
+  for (const action of ["skip", "unskip", "close", "reopen"]) assert.deepEqual(b.parseBulk({ ids: [2], action }), { ok: true, value: { ids: [2], action } });
+  assert.equal(b.cleanQuery("  a "), "");
+  assert.equal(b.cleanQuery("   "), "");
+  assert.equal(b.cleanQuery(null), "");
+  assert.equal(b.cleanQuery("  ab   cd "), "ab cd");
+  assert.equal(b.cleanQuery("x".repeat(200)).length, 80);
+  assert.equal(b.likePattern("50%_off!"), "%50!%!_off!!%", "percent, underscore and the escape character are plain text");
+});
+
+test("bulk updates go through the normal rules and stay inside the brand", async () => {
+  const ids = [await seedVerifyLead("Bulk Lead A Verify21"), await seedVerifyLead("Bulk Lead B Verify21"), await seedVerifyLead("Bulk Lead C Verify21")];
+  await store.setStage("aquila", ids[2], "contacted");
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids, action: "tag", tags: ["bulk test"] }), { changed: 3, total: 3 });
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids, action: "tag", tags: ["bulk test"] }), { changed: 0, total: 3 }, "already tagged");
+  assert.deepEqual(await store.tagsForLead("aquila", ids[1]), ["bulk test"]);
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids, action: "stage", stage: "contacted" }), { changed: 2, total: 3 }, "one was already there");
+  assert.equal((await store.getLead("aquila", ids[0])).stage, "contacted");
+  assert.ok((await store.listActivities("aquila", ids[0])).some((a) => /moved|Stage|New to Contacted/i.test(a.body)), "the stage log records it as for a single contact");
+  // skipping only touches contacts that are plainly new, and stop skipping only undoes a skip
+  const fresh = [await seedVerifyLead("Bulk Lead D Verify21"), await seedVerifyLead("Bulk Lead E Verify21")];
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids: [...fresh, ids[2]], action: "skip" }), { changed: 2, total: 3 }, "a contact already contacted is left alone");
+  assert.equal((await store.getLead("aquila", fresh[0])).status, "skipped");
+  assert.equal((await store.getLead("aquila", ids[2])).status, "contacted");
+  await store.setLeadStatus("aquila", fresh[1], "do_not_contact");
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids: fresh, action: "unskip" }), { changed: 1, total: 2 }, "do not contact is never undone in bulk");
+  assert.equal((await store.getLead("aquila", fresh[1])).status, "do_not_contact");
+  // closing rejects unsent drafts, once, and reopen undoes it
+  await store.saveDraft("aquila", ids[0], { subject: "s", body: "b" });
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids, action: "close" }), { changed: 3, total: 3 });
+  assert.equal((await store.getDraftByLead("aquila", ids[0])).status, "rejected");
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids, action: "close" }), { changed: 0, total: 3 }, "already closed");
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids, action: "reopen" }), { changed: 3, total: 3 });
+  // another brand, and ids that do not exist, change nothing
+  assert.deepEqual(await store.bulkUpdateLeads("other", { ids, action: "close" }), { changed: 0, total: 3 });
+  assert.equal((await store.getLead("aquila", ids[0])).closed_at, null);
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids: [99999998, 99999999], action: "tag", tags: ["ghost"] }), { changed: 0, total: 2 });
+  assert.deepEqual(await store.bulkUpdateLeads("aquila", { ids: [], action: "skip" }), { changed: 0, total: 0 });
+});
+
+test("search finds contacts, clients and deals by what is inside them, and treats typed symbols as plain text", async () => {
+  const lead = await seedVerifyLead("Search Needle Bakery Verify22");
+  await store.updateLeadContact("aquila", lead, { contact_email: "needle@searchfind.example", notes: "xyzzy-secret-phrase", status: "new" });
+  await store.addTags("aquila", lead, ["needlefan"]);
+  const clientLead = await seedVerifyLead("Search Client Lead Verify22");
+  const cl = await store.createClient("aquila", { name: "Needle Client Verify22", email: "c@needle.example" });
+  const deal = await store.createDeal("aquila", clientLead, { title: "Needle Deal Verify22", amountCents: 100 });
+  const hit = await store.searchEverything("aquila", "needle");
+  assert.ok(hit.leads.some((l) => l.id === lead), "found by name, email and tag");
+  assert.ok(hit.clients.some((c) => c.id === cl), "clients");
+  assert.ok(hit.deals.some((d) => d.id === deal && d.lead_name === "Search Client Lead Verify22"), "deals, with their contact");
+  assert.ok((await store.searchEverything("aquila", "xyzzy-secret")).leads.some((l) => l.id === lead), "found inside private notes");
+  assert.ok((await store.searchEverything("aquila", "NEEDLEFAN")).leads.some((l) => l.id === lead), "case does not matter");
+  assert.ok((await store.searchEverything("aquila", "searchfind.example")).leads.some((l) => l.id === lead));
+  // symbols are plain characters
+  const a = await seedVerifyLead("Fifty% Off Cafe Verify22");
+  const b = await seedVerifyLead("Fiftyx Off Cafe Verify22");
+  const pct = (await store.searchEverything("aquila", "Fifty% Off")).leads.map((l) => l.id);
+  assert.ok(pct.includes(a) && !pct.includes(b), "a percent sign is not a wildcard");
+  const c = await seedVerifyLead("Snake_Case Cafe Verify22");
+  const d = await seedVerifyLead("SnakexCase Cafe Verify22");
+  const us = (await store.searchEverything("aquila", "Snake_Case")).leads.map((l) => l.id);
+  assert.ok(us.includes(c) && !us.includes(d), "an underscore is not a wildcard");
+  for (const evil of ["'; DROP TABLE leads; --", "\\", "!", "%%", "\" OR 1=1"]) await store.searchEverything("aquila", evil); // each must resolve, not reject
+  assert.ok(await store.getLead("aquila", lead), "and nothing was dropped");
+  // closed businesses are still found, after the open ones; another brand finds nothing; the limit holds
+  await store.setClosed("aquila", lead, true);
+  const sorted = (await store.searchEverything("aquila", "Search Needle")).leads;
+  assert.ok(sorted.some((l) => l.id === lead && l.closed_at));
+  assert.deepEqual(await store.searchEverything("other", "needle"), { leads: [], clients: [], deals: [] });
+  assert.ok((await store.searchEverything("aquila", "Verify22", 3)).leads.length <= 3);
+  await store.setClosed("aquila", lead, false);
+});
+
+test("duplicates: many stores of one chain in one city are never offered for merging (found on real scanned data)", async () => {
+  const d = await import("../lib/dupes.js");
+  const stores = Array.from({ length: 10 }, (_, i) => dl(200 + i, { name: "Starbucks", city: "Cleveland", phone: `+1 216-555-${String(1000 + i)}`, website: `https://www.starbucks.com/store-locator/store/${1000 + i}` }));
+  assert.deepEqual(d.findDuplicateGroups(stores), [], "different phone numbers and different store pages: ten places, not one");
+  const noPhones = Array.from({ length: 5 }, (_, i) => dl(300 + i, { name: "Starbucks", city: "Akron", website: `https://www.starbucks.com/store-locator/store/${2000 + i}` }));
+  assert.deepEqual(d.findDuplicateGroups(noPhones), [], "different store pages alone are enough, with no phone numbers at all");
+  const twoShops = [dl(400, { name: "Rising Star Coffee Roasters", city: "Cleveland", phone: "+1-216-273-3573", website: "http://www.risingstarcoffee.com" }), dl(401, { name: "Rising Star Coffee Roasters", city: "Cleveland", phone: "+1-216-242-6979", website: "https://risingstarcoffee.com/" })];
+  assert.deepEqual(d.findDuplicateGroups(twoShops), [], "one business with two shops, each with its own phone");
+  // genuine duplicates in the same data are still found
+  const same = [
+    dl(500, { name: "Great Clips", city: "Cleveland", website: "https://salons.greatclips.com/us/oh/cleveland/3772-rocky-river-dr" }),
+    dl(501, { name: "Great Clips", city: "Cleveland", website: "https://salons.greatclips.com/us/oh/cleveland/3772-rocky-river-dr/" }),
+    dl(502, { name: "Evelyn's Coffee & Banh Mi", city: "Akron", phone: "+13308495080" }),
+    dl(503, { name: "Evelyn’s Coffee And Banh Mi", city: "Akron" }),
+    dl(504, { name: "Citizen Pie", city: "Cleveland", website: "http://www.citizenpie.com/" }),
+    dl(505, { name: "Citizen Pie", city: "Cleveland", website: "https://citizenpie.com" }),
+    dl(506, { name: "Starbucks", city: "Cleveland", phone: "216-555-7777", website: "https://www.starbucks.com/store-locator/store/9" }),
+    dl(507, { name: "Starbucks", city: "Cleveland", phone: "(216) 555-7777", website: "https://www.starbucks.com/store-locator/store/9" }),
+  ];
+  assert.deepEqual(d.findDuplicateGroups(same).map((g) => g.ids), [[500, 501], [502, 503], [504, 505], [506, 507]], "the same store listed twice is a duplicate");
+  // a conflict also cancels a name match when only one side has a phone number? no: one missing phone is not a conflict
+  assert.equal(d.duplicateReason(dl(1, { name: "Pie Place", city: "X", phone: "216-555-0001" }), dl(2, { name: "Pie Place", city: "X" })), "Same name in the same place");
+  assert.equal(d.duplicateReason(dl(1, { name: "Pie Place", city: "X", website: "https://a.example/" }), dl(2, { name: "Pie Place", city: "X", website: "https://b.example/" })), null, "two different websites");
+  assert.equal(d.duplicateReason(dl(1, { name: "Pie Place", city: "X", website: "https://a.example/menu" }), dl(2, { name: "Pie Place", city: "X", website: "https://a.example/" })), "Same name in the same place", "a home page and a menu page of one site");
+});
+
+test("a contact export includes their tags", async () => {
+  const privacy = await import("../lib/privacy.js");
+  const lead = await seedVerifyLead("Export Tags Lead Verify23");
+  await store.addTags("aquila", lead, ["alpha tag", "beta tag"]);
+  const x = await privacy.contactExport("aquila", lead);
+  assert.deepEqual(x.tags, ["alpha tag", "beta tag"]);
 });

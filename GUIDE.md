@@ -101,6 +101,15 @@ First-time PayPal setup (sandbox, test money only):
 1. **Settings, Connections** (owners and admins): paste your Google Calendar appointment page link under **Booking link** and **Save link**.
 2. It then appears in new outreach drafts, on the public concept pages, and on each contact's page to paste into replies. (Drafts made earlier need **Regenerate from template**.)
 
+## 3d. Keeping your contacts tidy
+
+1. **Duplicates** (owners and admins): on **Prospects**, open the **Duplicates** tab. Each group is one business that appears more than once. The suggested one to keep is already chosen (a client, then the furthest along). Press **Merge into the one I keep**, or **These are different** if they really are separate places. Kestrel does not offer two entries that have different phone numbers or different store pages, so chains are left alone.
+2. **Import contacts**: on Prospects press **Import contacts**, choose a CSV file, say where the contacts came from, and press **Check the file**. You see what will be added, what already exists, and which rows have a problem and why. Nothing is added until you press **Import**. Importing the same file again adds nothing.
+3. **Tags**: on a contact's page add tags like "coffee" or "met at expo". On Prospects, the **Tag** buttons filter by them.
+4. **Saved views**: set your filters, type a name under **Saved views**, and press **Save this view**. It appears as a button you can press any time.
+5. **Do something to several at once**: tick contacts in the Prospects list (or **Select all on this page**), choose what to do, and press **Apply**. Won and Not interested are set one contact at a time on purpose.
+6. **Search**: the box at the top of the menu finds contacts, clients and deals by name, email, phone, city, notes, website, or tag.
+
 ## 8a. Deals and the forecast
 
 1. When a contact could become paid work, open their page and press **Add a deal** (or **Deals, New deal**). Give it a name, the kind of work, an amount, an expected close date, and a stage. Leave **Chance to win** blank to use the usual figure for the stage (Discovery 20%, Proposal 50%, Negotiation 75%).

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.0 (branch crm-core)
+- Duplicates (a tab under Prospects, owners and admins): finds the same business listed twice, by same name in the same place, phone, email, or website, and lets you keep one and merge the rest. The timeline, follow-ups, meetings, deals, a client record, notes and blank details move onto the one you keep; do not contact always wins; a scan later treats the merged business as that contact. Entries with different phone numbers, different store pages, different cities, or far apart on the map are never offered, so a chain's many stores are left alone. "These are different" is remembered.
+- Import contacts (CSV): upload, see exactly what will happen (new, already exists, problem rows with reasons), then import. Duplicates of existing contacts or of earlier rows are skipped, so importing the same file twice adds nothing.
+- Tags on contacts with a Tag filter on Prospects, saved views of your filters, bulk actions on ticked contacts (add a tag, move to a stage, skip, close, reopen; not Won or Not interested), and a search box (in the menu and on /search) across contacts, clients and deals.
+
 ## 2.3.0 (branch crm-core)
 - Deals (under Follow up, between Pipeline and Calendar): the money side of a contact. A deal has an amount, a stage (Discovery, Proposal, Negotiation), a chance to win that starts from the stage but can be changed, and an expected close date. The Deals page shows open pipeline, forecast (amount times chance), won in the last 90 days, win rate with counts, a forecast chart by month, a board by stage with a Move button, and recently closed deals.
 - Winning a deal turns the contact into a client and creates a project at the deal's amount, ready for invoicing. Losing needs a reason, and the contact is marked lost only when it has no other open deal. A lost deal can be reopened. Moving a deal to Proposal marks the contact Proposal sent.
